@@ -4,6 +4,48 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.6.0] — 🧪 It learns, carefully
+
+The last release of the v2 plan (`docs/DESIGN-v2.md`): the safety piece that
+makes self-improvement trustworthy, and the sweep that puts everything since
+v1.0 on the website, the docs site and the pitch deck — in 14 languages.
+
+**Added**
+- **Skill regression** (`daemon/skilltests.js`, design J). A skill may carry
+  test cases — `{ prompt, expect }`, where `expect` is a regular expression
+  or, with a leading `!`, one that must not match. When the office's own
+  reflection proposes a correction to a skill it wrote (`refine` in
+  `maybeLearnSkill`), every case is judged by a real model turn with the
+  **candidate** text as the only instructions, *before* the live text is
+  touched. A correction that breaks a case is refused: a
+  `skill.refine.blocked` event, a notification saying which cases failed, and
+  the skill's `lastTest` records it. A refusal still lets that run's new skill
+  be learned. No cases → nothing to regress against → accepted, as before.
+  Routes: `GET /skills/tests?id=`, `POST /skills/tests { id, cases }`,
+  `POST /skills/tests/run { id, content? }` (owner only). Plugins get
+  `ctx.skillTests`.
+- 🧪 **skill-regression** — the eighth library plugin: the panel where cases
+  are written per self-written or edited skill, run by hand, and where the
+  last result (and any refused correction) is shown; agent commands `add`,
+  `run`, `list`, `clear`.
+- **The website in 14 languages** — seven feature cards (one inbox on your
+  phone · budgets in money · a workflow engine with triggers · a task board
+  and a real calendar · Codex as a colleague · official plugins · teams in one
+  click) and six docs links (inbox, budgets, tasks, Codex, library, teams),
+  each translated in all 14 languages and guarded by `site-i18n.test.js`.
+- **The pitch deck** gains six capability cards for v1.1–v1.5, a shipped
+  roadmap stop ("an office that runs while you're away"), and the version.
+- **Getting started** gains a *day one* section: hire a team, install a
+  plugin, and where everything shows up from then on.
+- **Tests** — `skilltests.test.js` (5): case validation and caps, the judge
+  (case-insensitive, `!` negation), one model turn per case with the skill
+  text as the instructions, the gate's three outcomes (no cases, pass, fail —
+  recorded on the skill; a model error counts as a failure), and the daemon
+  wiring (the gate runs before `cur.prev` is written).
+
+**Changed**
+- `npm/` and `npm-bagidea/` package versions track the office (1.6.0).
+
 ## [1.5.0] — 🧩 It's useful
 
 The v2 plan's fifth release — the plugins, teams and tools that make the
