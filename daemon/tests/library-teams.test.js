@@ -174,9 +174,11 @@ test("library: content-pipeline parses RSS and Atom, follows a feed with the rss
   const f = await cmd(h, "content-pipeline", "follow", feedUrl + " :: 15 :: witty");
   const t = h.triggers.get(f.feed.triggerId);
   assert.deepStrictEqual([t.kind, t.cfg.url, t.cfg.everyMin], ["rss", feedUrl, 15]);
-  await new Promise((r) => setTimeout(r, 150));
+  // the first poll runs asynchronously — wait for it to land on disk (a slow CI runner needs more than a tick)
+  const seenFile = path.join(h.root, "plugins", "content-pipeline", "data", "seen.json");
+  await new Promise((res, rej) => { const t0 = Date.now(); const i = setInterval(() => { if (fs.existsSync(seenFile)) { clearInterval(i); res(); } else if (Date.now() - t0 > 5000) { clearInterval(i); rej(new Error("the first feed poll never wrote seen.json")); } }, 25); });
   h.triggers.stopAll(); feedSrv.close();
-  const seen = JSON.parse(fs.readFileSync(path.join(h.root, "plugins", "content-pipeline", "data", "seen.json"), "utf8"));
+  const seen = JSON.parse(fs.readFileSync(seenFile, "utf8"));
   assert.deepStrictEqual(seen[t.id], { ids: ["g1"], primed: true }, "the first poll primes the seen list and fires nothing");
   assert.ok(h.workflows.exists("content-pipeline"));
   assert.match(h.workflows.load("content-pipeline").nodes.find((n) => n.id === "d").text, /witty/);
