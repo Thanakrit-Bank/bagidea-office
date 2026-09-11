@@ -4,6 +4,72 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.3.0] — 🔀 It runs
+
+The v2 plan's third release — the core of the machine. A workflow stops being a
+drawing and starts being something that runs, and can start on its own.
+
+**Added**
+- **A workflow engine** (`daemon/workflows.js`). `POST /workflows/run` used to
+  serialize the graph to prose and hand it to the Director as one order. Now
+  every node executes on its own: in parallel where the edges fan out, joining
+  where they converge, a decision opening only the branch it chose (the other
+  is *skipped*, which is not a failure). Data flows down the edges as
+  `{{trigger.data.x}}`, `{{n3.output}}` and `{{prev}}` — small and explicit,
+  no scripting language. Every run is a persisted record
+  (`workspace/workflows/runs/`) that a restart **resumes**: delays re-arm,
+  approvals stay pending in the inbox, and an agent step that was mid-flight
+  is marked failed rather than pretended. Events `workflow.run` and
+  `workflow.node` drive live UI; `GET /workflows/runs` is the history.
+- **Three node types that make it a machine.** ✋ **approval** asks through
+  the inbox (kind *workflow*) and resumes on approve — from the sidebar, the
+  chat card, the CLI or your phone; 🔔 **notify** goes through the notification
+  rules; ⏳ **delay** waits `10m` / `2h 30m` / `until 09:00`. **fetch** is a
+  real HTTP request now (JSON parsed, redirects followed once); **decision** is
+  an expression (`==`, `!=`, `<`, `>`, `contains`, `matches`) or a plain
+  question the Director answers YES/NO; **output** records, writes a file
+  (`file:<path>`) or relays to your channels (`channel:`).
+- **Every agent step is a real turn** through `runClaude` — the same permission
+  broker, the same budget gate, the same Security Center — tracked as a task
+  row (🔀 in Mission Control). `@id:` picks the agent; the Director gets
+  DELEGATE power on a step, as on a job.
+- **⚡ Triggers** (`daemon/triggers.js`): a workflow starts without you.
+  **schedule** (every N minutes or daily at HH:MM), **webhook**
+  (`POST /hook/<token>`; an optional secret verifies an HMAC-SHA256 signature
+  — GitHub's `X-Hub-Signature-256` works as-is; `X-GitHub-Event` becomes the
+  run's event), **event** (any office event by type), **file** (a folder
+  watched with `fs.watch`, debounced, filtered by a glob) and **channel** (a
+  message starting with a keyword — consumed, never a Director order). The
+  engine's own events never trigger anything, so there are no loops. Secrets
+  are masked in every API response.
+- **The Builder learns all of it:** ✋ 🔔 ⏳ in the palette with a hint per type,
+  **▶️ Run now** watches the run and colours the canvas as it goes, **▶ RUNS**
+  keeps the history (click one to replay its states), **⚡ TRIGGERS** adds,
+  pauses, fires and removes triggers, and a webhook row copies its URL with the
+  tunnel hint.
+- **A guide, rewritten:** [`docs/guide/workflows.md`](docs/guide/workflows.md).
+- **`daemon/tests/workflows.test.js`** — seventeen tests with a fake agent: a
+  linear run with `{{prev}}`, fan-out that really runs in parallel and a join
+  that really waits, decisions by expression (no model) and by question,
+  approval wait/resume/reject, delay persistence across a "restart", a
+  mid-flight step failed on restart, fetch/notify/output doing real work
+  against a local server, failure reporting, bounded newest-first history, and
+  every trigger kind including HMAC verification and a real `fs.watch`.
+
+**Fixed**
+- **`daemon/joborder.js` instructed the model in Thai.** The standing-order and
+  Director notes every scheduled job carries were Thai prompt scaffolding — the
+  #49 class of bug, one module over from the v1.0.5 sweep. English now, and the
+  Thai guard in `field-issues-46-50.test.js` scans this file too (verified: it
+  fails naming `joborder.js` with the old text restored).
+
+**Changed**
+- `POST /workflows/run` returns at once with the run; `legacy: true` keeps the
+  pre-1.3 behaviour (the whole drawing to the Director, synchronously).
+
+Nothing starts by itself until you add a trigger. The daemon still listens on
+`127.0.0.1` only; a webhook reaches the internet through a tunnel you run.
+
 ## [1.2.0] — 💸 On a budget
 
 The v2 plan's second release. Before the office is allowed to run on its own
