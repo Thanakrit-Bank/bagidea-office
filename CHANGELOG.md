@@ -4,6 +4,23 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.6.1] — 🧾 A run that dies says so
+
+**Fixed**
+- **An abnormal end never reached the session history**
+  ([#52](https://github.com/bagidea/bagidea-office/issues/52)). A run killed
+  by the watchdog (the 30-minute total or 5-minute idle cap), a child process
+  `error`, a brain-dead key (401 / 403 / an endpoint that never answers), or a
+  run that ended with no result all detected the failure correctly and
+  broadcast `task.failed` — to whoever was watching *live*. Nothing was written
+  into `entry.log`, the persistent history `GET /sessions/log` reads, so a
+  session checked later (from the API, another session, a dispatcher polling
+  a job) saw a trail that simply stopped after the last tool call. Each of the
+  four branches now writes one visible line — `⚠ Run ended abnormally — …`
+  with the reason — and persists it at once; once per run, never on a normal
+  finish. Guarded by `field-issue-52.test.js`. Reported with the exact root
+  cause by @hswancampbell1-afk.
+
 ## [1.6.0] — 🧪 It learns, carefully
 
 The last release of the v2 plan (`docs/DESIGN-v2.md`): the safety piece that
