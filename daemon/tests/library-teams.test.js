@@ -30,10 +30,11 @@ function host() {
   const calendar = require("../calendar")({ file: path.join(root, "calendar.json"), log: () => {} });
   const workflows = require("../workflows")({ dir: path.join(root, "wf"), notify: (n) => notes.push(n), runAgent: async (a, p) => { claude.push(p); return { ok: true, text: "agent did: " + p.slice(0, 40) }; }, log: () => {} });
   const triggers = require("../triggers")({ reg, workflows, log: () => {} });
+  const skillTests = require("../skilltests")({ reg, saveReg: () => {}, log: () => {}, ask: async () => "use --data-binary @file" });
   const plugins = require("../plugins")({
     pluginsDir: path.join(root, "plugins"), log: () => {}, reg, saveReg: () => {}, broadcast: () => {}, daemonDir: path.join(ROOT, "daemon"), workspace: root,
     notify: (n) => notes.push(n), approvals: { ask: (item) => { asked.push(item); return Promise.resolve("approve"); } }, tasks, calendar, triggers, workflows,
-    schedule: (p) => ({ id: "job1", ...p }),
+    schedule: (p) => ({ id: "job1", ...p }), skillTests,
     runClaude: (agent, prompt, opts) => { claude.push(prompt); setTimeout(() => opts.onDone("Draft copy for the post #launch", true), 5); },
   });
   const h = { root, reg, notes, asked, claude, tasks, calendar, workflows, triggers, plugins };
@@ -54,7 +55,7 @@ const cmd = (h, id, name, args) => new Promise((resolve, reject) => {
 const ids = fs.readdirSync(LIB).filter((d) => fs.existsSync(path.join(LIB, d, "plugin.json")));
 
 test("library: seven plugins ship, each with a manifest, an index.js that parses, and English text only", () => {
-  assert.ok(ids.length >= 7, "expected at least 7 library plugins, found " + ids.join(", "));
+  assert.ok(ids.length >= 8, "expected at least 8 library plugins, found " + ids.join(", "));
   for (const id of ids) {
     const man = JSON.parse(fs.readFileSync(path.join(LIB, id, "plugin.json"), "utf8"));
     assert.strictEqual(man.id, id, id + ": manifest id matches its folder");
@@ -84,6 +85,7 @@ test("library: every plugin loads in the real host, and registers the hooks its 
       if (hook === "memory.provider") assert.ok(p.hooks.memory, p.id + " claims a memory provider");
       if (hook === "triggers.register") assert.ok(p.hooks.triggers.length, p.id + " claims a trigger kind");
       if (hook === "workflow.node") assert.ok(p.hooks.nodes.length, p.id + " claims a node");
+      if (hook === "skillTests") assert.ok(p.commands.some((c) => c.name === "run"), p.id + " claims the skill-test hook");
     }
   }
 });

@@ -469,6 +469,17 @@ async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId, fai
       // office's contract and a hand-edited skill is the owner's writing —
       // neither is the model's to rewrite.
       if (skillsSync.canRefine(cur) && String(rf.content).trim() !== String(cur.content).trim()) {
+        // 🧪 The regression gate: with test cases on file, the candidate text must
+        // pass every one before it replaces what works. A refusal is visible —
+        // the owner sees why the office declined to "improve" itself.
+        let verdict = { ok: true, skipped: true };
+        try { verdict = await skillTests.gate(rf.id, rf.content); } catch (e) { console.error("[skills] gate:", e && e.message); }
+        if (!verdict.ok) {
+          const failed = verdict.results.filter((x) => !x.pass);
+          broadcast({ type: "skill.refine.blocked", agent, task, skill: cur.name, why: String(rf.why || "").slice(0, 200), failed: failed.length, total: verdict.results.length });
+          try { notify.send({ kind: "system", title: `🧪 Kept "${cur.name}" as it was`, body: `${agent} proposed a correction (${String(rf.why || "").slice(0, 120)}) but ${failed.length}/${verdict.results.length} test case(s) fail with the new text.` }); } catch {}
+          return finishLearn();
+        }
         cur.prev = cur.content;            // one step back is always available
         cur.content = String(rf.content).slice(0, 4000);
         cur.revs = (cur.revs || 0) + 1;
@@ -481,6 +492,9 @@ async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId, fai
         broadcast({ type: "skill.refined", agent, task, skill: cur.name, why: cur.refinedWhy });
       }
     }
+    return finishLearn();
+    // A refused refinement still lets this run's NEW skill (if any) be learned.
+    function finishLearn() {
     const sk = j.skill;
     if (!sk || !sk.name || !sk.content) return;
     const id = slugId(sk.name);
@@ -498,6 +512,7 @@ async function maybeLearnSkill(agent, task, prompt, acts, finalText, projId, fai
     if (retrievalOk) try { retrieval.reindexSkill(id, reg.skills[id]); retrieval.persist(); } catch {}
     try { if (reg.nativeSkills !== false) skillsSync.syncAgent(AGENTS_DIR, agent, (reg.agents[agent] || {}).skills || [], reg.skills); } catch {}
     broadcast({ type: "skill.created", agent, task, skill: reg.skills[id].name });
+    }
   } catch {}
 }
 
@@ -4005,6 +4020,10 @@ const tasks = require("./tasks")({
   file: path.join(WORKSPACE, "tasks.json"), broadcast, log: (m) => console.log(m),
   notify: (n) => notify.send(n), agentName: (id) => (reg.agents[id] || {}).name || id,
 });
+// 🧪 Skill regression (v1.6, design J): cases per skill; a self-correction that
+// breaks one is refused. Judged by the same headless turn the reflection uses.
+const skillTests = require("./skilltests")({ reg, saveReg, log: (m) => console.log(m),
+  ask: (prompt, o) => claudeText(prompt, { provider: o && o.provider, model: o && o.model }) });
 // 🧑‍💻 Codex as a system tool (v1.4, design G2). Never the brain: the agent that
 // calls it keeps its persona, memory, permissions and budget line.
 const codex = require("./codex")({
@@ -4182,6 +4201,7 @@ const plugins = require("./plugins")({
   schedule: (p) => createJob(p || {}),
   triggers, workflows,
   codex: { exec: (o) => codexMission("exec", o || {}, (o && o.agent) || "main"), review: (o) => codexMission("review", o || {}, (o && o.agent) || "main"), status: () => codex.status() },
+  skillTests,
 });
 
 // ---------------------------------------------------------------- social
@@ -5211,6 +5231,31 @@ const server = http.createServer((req, res) => {
         res.writeHead(400);
         res.end(String(e.message));
       }
+    });
+
+  // ---- 🧪 skill tests (v1.6) --------------------------------------------------
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/skills/tests") {
+    const id = new URL(req.url, "http://x").searchParams.get("id") || "";
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(id ? { id, cases: skillTests.cases(id), lastTest: (reg.skills[id] || {}).lastTest || null } : { summary: skillTests.summary() }));
+
+  } else if (req.method === "POST" && req.url === "/skills/tests") {
+    // { id, cases: [{ prompt, expect, note }] } — the owner's (or a plugin's) cases for one skill.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try { const p = JSON.parse(body); const cases = skillTests.setCases(p.id, p.cases); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true, cases })); }
+      catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/skills/tests/run") {
+    // { id, content? } — run the cases now (against the current text, or a candidate).
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body); } catch { res.writeHead(400); return res.end("bad json"); }
+      skillTests.run(p.id, p.content).then((r) => {
+        const sk = reg.skills[p.id]; if (sk && p.content == null) { sk.lastTest = { at: r.at, ok: r.ok, passed: r.results.filter((x) => x.pass).length, total: r.results.length, candidate: false }; saveReg(); }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(r));
+      }).catch((e) => { res.writeHead(400); res.end(String(e && e.message)); });
     });
 
   } else if (req.method === "POST" && req.url === "/registry/skill") {

@@ -1,7 +1,7 @@
 # 🧰 The Tools Hub — giving agents new abilities
 
 An agent can only do what its tools let it do. The **Tools Hub** is where you
-hand it more of them: a browsable catalog of **44 entries** — the 15 abilities
+hand it more of them: a browsable catalog of **53 entries** — the 15 abilities
 every agent already has, and **29 MCP servers** you can add with one click.
 
 Open it from the **⋯** menu → **🧰 Tools Hub**, or browse the same catalog on the
@@ -51,8 +51,11 @@ remembers), Filesystem, Web Fetch.
 
 **🔮 Knowledge (3)** — Exa Search, Firecrawl, Brave Search.
 
-**💼 Work & data (10)** — GitHub, **Codex**, Google Workspace, Notion, Linear, Slack,
-Sentry, PostgreSQL, SQLite, and **➕ Any MCP server** for anything not listed.
+**💼 Work & data (19)** — GitHub, **Codex**, Google Workspace, Notion, Linear, Slack,
+Sentry, PostgreSQL, SQLite, and — since v1.5 — **Stripe, Airtable, Trello, Asana,
+YouTube Data, Google Calendar, Gmail, Bluesky, HubSpot** (the ones the official
+plugins lean on: Gmail for the Inbox Agent, Bluesky for the Campaign Board), plus
+**➕ Any MCP server** for anything not listed.
 
 > **🧑‍💻 Codex** *(v1.1)* — OpenAI's coding agent as a tool. Grant it to an agent and
 > that agent can hand a coding task to Codex, which works in the project and
@@ -60,7 +63,7 @@ Sentry, PostgreSQL, SQLite, and **➕ Any MCP server** for anything not listed.
 > memory, skills and permissions all stay with the caller. Needs the Codex CLI
 > installed and logged in (`npm i -g @openai/codex`, then `codex login`). A deeper
 > integration — Codex as a system tool and a workflow node, with a second-opinion
-> review mode — arrives in v1.4.
+> review mode — arrived in v1.4 (see [codex.md](codex.md)).
 
 ---
 

@@ -128,6 +128,7 @@ module.exports = (ctx) => ({
 | `ctx.workflow.node(kind, impl, meta)` | *(v1.4)* contribute a **new workflow node** — see [hooks](#hooks) |
 | `ctx.memory.provider(fn)` | *(v1.4)* contribute lines at prompt-assembly time, for agents that opt in — see [hooks](#hooks) |
 | `ctx.codex.exec / review` | *(v1.4)* hand a task to [Codex](codex.md) |
+| `ctx.skillTests` | *(v1.6)* the skill regression gate — `cases(id)`, `setCases(id, cases)`, `run(id, content?)`, `summary()` (see the 🧪 skill-regression plugin) |
 
 ### Hooks
 

@@ -140,6 +140,19 @@ test("i18n: the v1.0 capabilities are documented on the site, in every language"
   }
 });
 
+test("i18n: the v1.1–v1.5 capabilities are documented on the site, in every language", () => {
+  const KEYS = [
+    "f_inbox_t", "f_inbox_d", "f_budget_t", "f_budget_d", "f_engine_t", "f_engine_d", "f_tasks_t", "f_tasks_d",
+    "f_codex_t", "f_codex_d", "f_library_t", "f_library_d", "f_teams_t", "f_teams_d",
+    "dn_inbox", "dn_budget", "dn_tasks", "dn_codex", "dn_library", "dn_teams",
+  ];
+  for (const code of CODES) {
+    const t = table(code);
+    const gone = KEYS.filter((k) => !t[k]);
+    assert.deepStrictEqual(gone, [], `"${code}" lost: ${gone.join(", ")}`);
+  }
+});
+
 test("the English settings names the docs cite are the ones the app shows", () => {
   // The chat window is Thai-source and machine-translated at runtime, so the
   // ALL-CAPS English term is the part that survives unchanged — it is the name

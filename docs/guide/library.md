@@ -2,7 +2,7 @@
 
 *New in v1.5.0.*
 
-Seven plugins ship **with** the office, built on the v1.4 hooks — each one a
+Eight plugins ship **with** the office, built on the v1.4 hooks — each one a
 real use of the machine the last releases built. A fresh install still starts
 empty (that is deliberate); these wait one click away in 🧩 → **📦 OFFICIAL
 LIBRARY**, or `bagidea plugin install <id>`.
@@ -15,6 +15,7 @@ LIBRARY**, or `bagidea plugin install <id>`.
 | 📬 **inbox-agent** | support, sales | email in (on a schedule) → classified → replies drafted → you approve → sent, through whatever mail tool the agent has (Gmail from the Tools Hub) |
 | 📊 **weekly-report** | management | every Monday morning: cards done, spend, workflow runs, upcoming events, gathered from the office's own records, written by the Director, delivered to your channel and kept as a file |
 | 🗂 **client-folders** | agencies, freelancers | a folder per client; whatever lands in it, the agent you chose handles it and tells you; every file is a card on the board |
+| 🧪 **skill-regression** | every office that lets skills self-correct | test cases per skill — a task and what the answer must (or must not) match. When the office tries to correct one of its own skills, every case runs against the new text first; a correction that breaks a case is **refused**, and you are told |
 | 🧠 **decision-log** | every team | "we decided X because Y" with supersede chains — and a **memory provider** that puts the active decisions in front of the agents you opt in, on every turn |
 
 Each has a panel (🧩 → click it), agent commands (`POST /plugin/<id>/cmd`),
