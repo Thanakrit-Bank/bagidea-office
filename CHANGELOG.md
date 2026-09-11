@@ -4,6 +4,71 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.0.5] — 🌐 The office stops instructing agents in Thai
+
+Five bugs, all reported from one live v1.0.4 office by
+[@hswancampbell1-afk](https://github.com/hswancampbell1-afk), each with a
+code-level diagnosis that held up when checked against the source.
+
+**Fixed**
+- **Agents drifted into Thai regardless of the office language**
+  ([#49](https://github.com/bagidea/bagidea-office/issues/49)). They weren't
+  choosing Thai — **the daemon was instructing them in Thai**. `personaText()`
+  wrapped every persona in Thai section headers, and the line naming *which
+  language to reply in was itself written in Thai*. So were the preamble's
+  note-board line, `SUB_NOTE`, `VOICE_NOTE`, `MEDIA_NOTE`, `TOOLS_NOTE`,
+  `autoNote`, the AUTO continuation prompt, and the Gemini Live call's system
+  instruction. An English office was being instructed in Thai and then asked to
+  answer in English; drifting is the sane reading of that prompt.
+  All of it is English now — and the office **says which language it is set to**
+  rather than leaving the model to infer it: `officeLangNote()` names `reg.lang`
+  in the preamble. An agent whose persona sets its own language still wins, and a
+  Thai office still gets Thai.
+- **Duplicate job ids silently left jobs enabled**
+  ([#50](https://github.com/bagidea/bagidea-office/issues/50)). Ids were
+  `"j" + Date.now()` — unique only if nothing ever creates two jobs in the same
+  millisecond. A plugin queueing a meeting's action items created seven in a
+  loop; two pairs collided, `/jobs/update` matched whichever came first, and each
+  *create-then-disable* disabled one twin while leaving the other **enabled**.
+  Two of them fired work that was explicitly meant to wait for a human.
+- **`POST /jobs` discarded `enabled:false` and fired `mode:"now"` immediately**
+  ([#48](https://github.com/bagidea/bagidea-office/issues/48)). `enabled` was
+  hardcoded `true` and the dispatch happened synchronously inside the request, so
+  a job created disabled had already run before the response came back.
+  `dispatchJob()` never consults `.enabled` and the scheduler's `jobDue()` never
+  sees `"now"` jobs — that call site was the only gate there was.
+- **Proactive compaction never fired; one thread reached 9.5M tokens against a
+  200k budget** ([#46](https://github.com/bagidea/bagidea-office/issues/46)).
+  `overBudget()` estimated a thread's size from the transcript's **bytes ÷ 4**.
+  That under-counts tool-heavy sessions (file dumps and JSON tool envelopes don't
+  tokenize like prose) and goes blind entirely if the session id ever moves,
+  leaving the safety net silently absent. The real figure was already being
+  stamped on the thread every turn as `lastUsage.in` — the exact number the
+  context meter displays. It uses that now, keeping the byte estimate only for a
+  thread that hasn't completed a turn.
+- **Chat bubbles and Mission Control showed the raw agent id**
+  ([#47](https://github.com/bagidea/bagidea-office/issues/47)) instead of the
+  name you gave the agent. Both now route through the existing `nameOf()`.
+  Mission Control is built from DOM nodes rather than an `innerHTML` template
+  while we're there: `nameOf()` returns a field the owner types, and that row
+  escaped nothing — interpolating it would have turned a display bug into an
+  injection. `m.tool` and the task id move to `textContent` with it.
+
+**Not changed, deliberately** — two of the three causes named in #49 are display
+strings, not prompt input. `logPrompt` lands in `entry.log`, the overlay's chat
+log, while the model resumes its own Claude session; the compaction banners
+arrive as `opts._notice` and are pushed to that same log. The English report-back
+prompt beside them is what the model actually reads. And `OFFICE_MD_OLD_TH` stays
+Thai on purpose, exactly as the reporter warned: it is compared against an
+untouched old Thai `OFFICE.md` to detect and replace it, so translating it would
+quietly break that migration. There is now a test that says so.
+
+**Added**
+- `daemon/tests/field-issues-46-50.test.js` — seven tests, one per fault plus the
+  migration string. The Thai guard is per line and about *majority*, so
+  `(in Thai use ครับ/ผม)` inside an English instruction stays legal while a whole
+  Thai sentence fails. Run against the pre-fix code, **six of the seven fail**.
+
 ## [1.0.4] — 🛠 A blank window that finally says what's wrong
 
 From a real deployment: a machine built for a customer to run local LLMs came up
