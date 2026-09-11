@@ -1546,7 +1546,7 @@
       const f = document.createElement("div");
       f.className = "face";
       face(f, who, 20);
-      w.append(f, document.createTextNode(who.toUpperCase()));
+      w.append(f, document.createTextNode(nameOf(who).toUpperCase()));
       d.appendChild(w);
     }
     const body = document.createElement("div");
@@ -1651,8 +1651,18 @@
     for (const [id, m] of Object.entries(missions)) {
       const d = document.createElement("div");
       d.className = "mission " + m.state;
-      d.innerHTML = `<b>${m.agent}</b> · ${m.state}` +
-        (m.tool ? ` · <i>${m.tool}</i>` : "") + `<div class="id">${id}</div>`;
+      const nm = document.createElement("b");
+      nm.textContent = nameOf(m.agent);
+      d.append(nm, document.createTextNode(" · " + m.state));
+      if (m.tool) {
+        const tl = document.createElement("i");
+        tl.textContent = m.tool;
+        d.append(document.createTextNode(" · "), tl);
+      }
+      const tid = document.createElement("div");
+      tid.className = "id";
+      tid.textContent = id;
+      d.append(tid);
       missionsEl.appendChild(d);
     }
   }
