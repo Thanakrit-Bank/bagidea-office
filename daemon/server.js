@@ -185,6 +185,27 @@ function staffCount() {
 // Nodes form a graph via edges (A → B = do B after A). A node with several
 // outgoing edges = parallel branches; several incoming = wait for all, then
 // continue. Falls back to top→bottom by Y when no edges are drawn.
+// Pre-1.3 behaviour, kept for `legacy:true`: the whole drawing as one order to
+// the Director. The engine is the default now.
+function runWorkflowViaDirector(w, res) {
+  queueDirectorTurn((release) => {
+    ceoFlow(
+      "Execute this workflow now. Do each step in order. When a node has SEVERAL " +
+      "OUTGOING arrows, those branches run in PARALLEL — and you must REALLY run " +
+      "them in parallel by ending your reply with one `SUB: <branch task>` line per " +
+      "branch (they become real ghost clones the owner can watch split off). Do NOT " +
+      "just say you split — emit the SUB: lines. A node with several incoming arrows " +
+      "waits for all branches, then continues from their merged results. Report the " +
+      "final result.\n\n" + workflowToText(w),
+      undefined, undefined,
+      { logPrompt: "🔀▶ workflow (legacy): " + (w.name || ""),
+        onDone: (out, ok) => {
+          release();
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok: !!ok, result: ok && out ? out : "the run did not complete — try again" }));
+        } });
+  });
+}
 function workflowToText(w) {
   const nodes = w.nodes || [];
   const edges = w.edges || [];
@@ -931,6 +952,7 @@ function journalTail(n) {
 
 // ---------------------------------------------------------------- bus
 
+let onBroadcastHook = null;   // set once triggers exist (event triggers listen here)
 function broadcast(evt, journal = true) {
   evt.ts = Date.now();
   const json = JSON.stringify(evt);
@@ -938,6 +960,7 @@ function broadcast(evt, journal = true) {
   const frame = wsFrame(json);
   for (const s of wsClients) s.write(frame);
   if (evt.type !== "world.pos") console.log("[oep] →", json);
+  if (onBroadcastHook) { try { onBroadcastHook(evt); } catch (e) { console.error("[trigger] event hook", e && e.message); } }
 }
 
 // ---------------------------------------------------------------- office ops
@@ -1918,6 +1941,7 @@ setInterval(() => {
   // 🌅 One digest a morning, at the time the owner chose — what yesterday cost
   // and what's waiting today. Through the rules like everything else.
   if (budget.digestDue(now)) budget.sendDigest(now, { pending: approvals.pendingCount() });
+  try { triggers.tick(now); } catch (e) { console.error("[trigger] tick", e && e.message); }
   for (const job of jobs) {
     if (jobDue(job, now)) {
       if (job.mode === "at" && job.daily) job.lastDay = new Date().toDateString();
@@ -3754,6 +3778,12 @@ const channels = require("./channels")({
     // A reply to something waiting in the inbox ("1 yes", "/deny 2 too risky",
     // or a bare "yes" when exactly one thing is pending) is answered here and
     // never reaches the Director as an order.
+    // A keyword that starts a workflow ("standup", "report …") fires it and answers
+    // straight away — the message never becomes a Director order.
+    if (triggers.onChannel(channel, from, String(text))) {
+      try { reply("🔀 started"); } catch {}
+      return;
+    }
     const ap = approvals.parseReply(String(text));
     if (ap) {
       approvals.respond(ap.id, ap.decision, { by: channel + ":" + from, note: ap.note })
@@ -3812,6 +3842,46 @@ const approvals = require("./approvals")({
 const budget = require("./budget")({
   reg, saveReg, stats: () => stats, notify: (spec) => notify.send(spec), log: (s) => console.log(s),
 });
+
+// 🔀 The workflow engine (daemon/workflows.js) and its triggers (daemon/triggers.js).
+// A workflow step that needs an agent becomes a REAL turn through runClaude — the
+// same engine, the same permission broker, the same budget gate — and its final
+// text is the step's output. The Director gets DELEGATE power on a step, as on a
+// job; anyone else works alone.
+const workflows = require("./workflows")({
+  dir: path.join(WORKSPACE, "workflows"),
+  examplesDir: path.join(__dirname, "workflow-examples"),
+  broadcast, notify: (spec) => notify.send(spec), approvals, budget,
+  relay: (text) => channels.relay(text),
+  log: (s) => console.log(s),
+  runAgent: (agent, prompt, o = {}) => new Promise((resolve) => {
+    const id = reg.agents[agent] && agent !== "ceo" ? agent : "main";
+    const director = id === "main";
+    const keyRef = { key: "" };
+    try {
+      runClaude(id, prompt + (director && !o.noSub ? directorNote() : "") + autoNote(), {
+        session: "new", noSub: !!o.noSub, project: o.project,
+        logPrompt: "🔀 " + (o.workflow ? "workflow " + o.workflow : "workflow") + " · " + String(o.node || "step"),
+        track: { agent: id, title: "🔀 " + String(prompt).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 70) },
+        filterText: director && !o.noSub ? (t) => stripStatus(makeDelegateFilter(0, keyRef.key || undefined)(t)) : (t) => stripStatus(t),
+        onEntry: (k) => { keyRef.key = k; },
+        onDone: (out, ok) => resolve({ ok: !!ok, text: String(out || "") }),
+      });
+    } catch (e) { resolve({ ok: false, text: String(e && e.message) }); }
+  }),
+});
+const triggers = require("./triggers")({ reg, saveReg, workflows, log: (s) => console.log(s) });
+onBroadcastHook = (evt) => triggers.onEvent(evt);
+approvals.on("workflow", (item, d) => {
+  const m = item.meta || {};
+  workflows.resume(m.runId, m.nodeId, d === "approve" ? "approve" : "reject", item.note);
+});
+// Runs that were mid-flight when the office last stopped pick up where they can;
+// file watchers come back on.
+setTimeout(() => {
+  try { const n = workflows.resumeAll(); if (n) console.log("[wf] resumed " + n + " run(s)"); } catch (e) { console.error("[wf] resume", e && e.message); }
+  try { triggers.startAll(); } catch (e) { console.error("[trigger] start", e && e.message); }
+}, 1500);
 
 // Work milestones → wherever the owner is, through the notification rules.
 // Hoisted function so earlier-in-file call sites can use it. `kind` picks the
@@ -6685,28 +6755,87 @@ end tell`;
     } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
 
   } else if (req.method === "POST" && req.url === "/workflows/run") {
-    // Run the workflow NOW — hand it to the Director as an order (full DELEGATE
-    // power), and ride the result back.
+    // Run it NOW through the engine: each node executes on its own, in parallel
+    // where the edges allow, with a persisted record. Returns at once with the
+    // run; progress arrives as workflow.node / workflow.run events and in
+    // GET /workflows/run?id=. `legacy:true` keeps the pre-1.3 behaviour (the
+    // whole drawing handed to the Director as one order).
     readBody(req, (body) => { try {
       const w = JSON.parse(body || "{}");
-      queueDirectorTurn((release) => {
-        ceoFlow(
-          "Execute this workflow now. Do each step in order. When a node has SEVERAL " +
-          "OUTGOING arrows, those branches run in PARALLEL — and you must REALLY run " +
-          "them in parallel by ending your reply with one `SUB: <branch task>` line per " +
-          "branch (they become real ghost clones the owner can watch split off). Do NOT " +
-          "just say you split — emit the SUB: lines. A node with several incoming arrows " +
-          "waits for all branches, then continues from their merged results. Report the " +
-          "final result.\n\n" + workflowToText(w),
-          undefined, undefined,
-          { logPrompt: "🔀▶ รัน workflow: " + (w.name || ""),
-            onDone: (out, ok) => {
-              release();
-              res.writeHead(200, { "content-type": "application/json" });
-              res.end(JSON.stringify({ ok: !!ok, result: ok && out ? out : "รันไม่สำเร็จ ลองใหม่อีกครั้ง" }));
-            } });
-      });
+      if (w.legacy) return runWorkflowViaDirector(w, res);
+      const wf = w.nodes ? { id: w.id || "", name: w.name || "Workflow", nodes: w.nodes, edges: w.edges || [] } : workflows.load(w.id);
+      if (!wf) { res.writeHead(404); return res.end("unknown workflow"); }
+      const run = workflows.start(wf, { trigger: { source: "manual", data: w.data || {} }, by: req.headers["x-bagidea-ui"] ? "owner" : "api" });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, run: workflows.getRun(run.id), result: "started" }));
     } catch (e) { res.writeHead(400); res.end(String(e.message)); } });
+
+  } else if (req.method === "GET" && req.url.startsWith("/workflows/runs")) {
+    const q = new URL(req.url, "http://x").searchParams;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(workflows.runs({ workflowId: q.get("id") || "", limit: q.get("limit") })));
+
+  } else if (req.method === "GET" && req.url.startsWith("/workflows/run?")) {
+    const id = new URL(req.url, "http://x").searchParams.get("id") || "";
+    const run = workflows.getRunFull(id);
+    res.writeHead(run ? 200 : 404, { "content-type": "application/json" });
+    res.end(JSON.stringify(run || {}));
+
+  } else if (req.method === "POST" && req.url === "/workflows/cancel") {
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        const ok = workflows.cancel(String(JSON.parse(body || "{}").id || ""));
+        res.writeHead(ok ? 200 : 404, { "content-type": "application/json" }); res.end(JSON.stringify({ ok }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url === "/triggers") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ triggers: triggers.list(), kinds: [...triggers.KINDS] }));
+
+  } else if (req.method === "POST" && req.url === "/triggers") {
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        const p = JSON.parse(body || "{}");
+        const t = p.id ? triggers.update(String(p.id), p) : triggers.add(p);
+        if (!t) { res.writeHead(404); return res.end("unknown trigger"); }
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(t));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/triggers/delete") {
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        const ok = triggers.remove(String(JSON.parse(body || "{}").id || ""));
+        res.writeHead(ok ? 200 : 404, { "content-type": "application/json" }); res.end(JSON.stringify({ ok }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/triggers/fire") {
+    // Test a trigger by hand, with an optional payload.
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        const p = JSON.parse(body || "{}");
+        const run = triggers.fire(String(p.id || ""), { event: "manual", data: p.data || {} }, "owner");
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: true, run: workflows.getRun(run.id) }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url.startsWith("/hook/")) {
+    // An inbound webhook. No UI header — the whole point is that something out
+    // there calls it. The token in the URL selects the trigger; an optional
+    // secret verifies the body's HMAC. The daemon listens on 127.0.0.1 only, so
+    // this reaches the internet through a tunnel (cloudflared / ngrok) you run.
+    readBodyRaw(req, (raw) => {
+      const token = req.url.slice(6).split("?")[0].replace(/[^\w-]/g, "");
+      const r = triggers.webhook(token, req.headers, raw);
+      res.writeHead(r.status, { "content-type": "application/json" });
+      res.end(JSON.stringify(r.run ? { ok: true, run: r.run } : { ok: false, error: r.error }));
+    });
 
   } else if (req.method === "POST" && req.url === "/workflows/skill") {
     // Compile the workflow into a reusable SKILL — then it can be assigned to an

@@ -24,19 +24,24 @@ const DIRECTOR = "main";
 const JOB_NOTE = `
 
 <standing-order>
-นี่คือ "งานที่ตั้งเวลาไว้" ที่ถึงกำหนดแล้ว ระบบเป็นคนเปิดเทิร์นนี้ให้ — ไม่ใช่เจ้าของเพิ่งพิมพ์คุยกับคุณสดๆ.
-เจ้าของอาจไม่ได้อยู่หน้าจอตอนนี้ และจะไม่มีใครมาตอบคำถามระหว่างทาง. เพราะฉะนั้น "ลงมือทำจริงในเทิร์นนี้"
-— ไม่ใช่ตอบรับว่าจะทำ ไม่ใช่บอกแผนแล้วจบ. รายละเอียดที่อยู่ในขอบเขตของคุณให้ตัดสินใจเองแล้วเดินหน้าต่อ
-จนเสร็จจริงและ verify แล้ว. หยุดเพื่อรอเจ้าของเฉพาะเมื่อขาด credential/สิทธิ์ที่หาเองไม่ได้ หรือเมื่อ
-ต้องทำสิ่งที่ย้อนกลับยาก/ส่งออกนอก (push, deploy, ลบของ, ส่งข้อความออกภายนอก, ใช้จ่ายเงิน) เท่านั้น.
+This is a SCHEDULED order that has come due. The office opened this turn — the owner
+did not just type this to you live, and may not be at the screen now; nobody will
+answer a question mid-task. So do the work in THIS turn: not "I will", not a plan and
+then silence. Decide the details within your remit yourself and carry on until the
+work is genuinely finished and verified. Stop to wait for the owner only for a
+credential or permission you cannot obtain yourself, or for something hard to
+reverse or outward-facing (push, deploy, deleting data, sending a message outside,
+spending money).
 In short: a scheduled order is a real order — do the work now, don't just acknowledge it.
 </standing-order>`;
 
 const JOB_DIRECTOR_NOTE = `
 
 <standing-order-director>
-งานตั้งเวลานี้มาถึงคุณในฐานะ Director: ถ้าเนื้องานเป็นของทีม คุณต้องส่งออกไปด้วยบรรทัด DELEGATE: จริงๆ
-ในคำตอบนี้เลย — เขียนบรรยายว่า "จะให้ใครทำอะไร" ไม่มีใครได้รับงาน และงานจะค้างอยู่เฉยๆ จนเจ้าของกลับมา.
+This scheduled order reached you as the Director: if the work belongs to the team, you
+must hand it out with real DELEGATE: lines in THIS reply. Describing who will do what
+dispatches nothing — nobody receives the work, and it sits there until the owner
+comes back.
 </standing-order-director>`;
 
 /** Only the Director's replies are parsed for DELEGATE lines. */

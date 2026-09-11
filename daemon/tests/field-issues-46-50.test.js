@@ -101,6 +101,13 @@ test("#49 no prompt block instructs the model in Thai", () => {
     ["Gemini Live", "systemInstruction: { parts:", "toClient({ type: \"ready\" })"],
   ];
   const bad = [];
+  // The standing-order notes live in their own module and were missed by the
+  // v1.0.5 sweep — the same bug, one file over.
+  const JOBORDER = fs.readFileSync(path.join(ROOT, "daemon", "joborder.js"), "utf8");
+  for (const line of JOBORDER.split(/\r?\n/)) {
+    if (/^\s*\/\//.test(line)) continue;
+    if (majorityThai(line)) bad.push("joborder.js: " + line.trim().slice(0, 70));
+  }
   for (const [name, from, to] of BLOCKS) {
     const i = SERVER.indexOf(from);
     assert.ok(i > -1, `${name}: block not found — the guard is pointing at nothing`);
