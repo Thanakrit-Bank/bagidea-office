@@ -118,8 +118,12 @@ module.exports = function initApprovals(ctx) {
     save();
     const promise = new Promise((resolve) => waiters.set(item.id, resolve));
     if (item.expires) {
+      // NOT unref-d: a pending approval that someone is awaiting must keep a bare
+      // process alive until it is decided. With unref, node's test runner exited the
+      // file mid-await ("Promise resolution is still pending but the event loop has
+      // already resolved") and cancelled every test after it. The daemon's lifetime
+      // is owned by its HTTP server, so this timer never delays a shutdown there.
       const t = setTimeout(() => respond(item.id, "expired", { by: "timeout" }), item.expires - Date.now());
-      if (t.unref) t.unref();
       timers.set(item.id, t);
     }
     broadcast({ type: "approval.requested", ...publicItem(item) }, false);
