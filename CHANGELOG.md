@@ -4,6 +4,101 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.4.0] — 📋 It works
+
+The v2 plan's fourth release — the surfaces on top of the engine: a board that
+shows what the office is doing, a calendar that behaves like one, Codex as a
+tool the office can drive, and plugins that can reach all of it.
+
+**Added**
+- **One task board** (`daemon/tasks.js`; 🗂 → 📋 TASKS). A work item is
+  `{ title, owner, project, due, priority, status, dependsOn, recurrence, source }`
+  in one of todo / doing / waiting / done. Drag between columns, click to edit.
+  **Due dates** remind through the notification rules an hour before and once
+  overdue. **Dependencies** hold a card in *waiting* and release it by
+  themselves — the owner is told — when the last blocker closes. **Repeat**
+  (day / week / month) brings a finished card back, due the next period.
+  Everything the office does lands on the board: the Director's
+  **delegations** (owned by the assignee, *doing* → *done*, or *waiting* when
+  the task failed), **fired jobs** (one card per job, back to *doing* each
+  run), a meeting's **action items** (with their owner and due date),
+  **workflow runs**, and Codex calls. Every agent is told the board and its
+  API at the start of each turn (`<office-tasks>`), so they move their own
+  cards. `GET /tasks`, `GET /tasks/board`, `POST /tasks|/tasks/update|/tasks/move`,
+  `POST /tasks/delete` (owner only). Events `work.created|updated|done|removed`
+  — an **event** trigger can start a workflow on any of them. `/stats` carries
+  the summary; the Director's heartbeat reads it.
+- **A calendar that behaves like one** (`daemon/calendar.js`; the same
+  `calendar.json` on disk, old rows load unchanged). **Recurrence** — daily,
+  weekly by day, weekdays, monthly, yearly, with interval / count / until (the
+  RRULE subset real calendars export); **all-day** events; reminders **per
+  occurrence** (a weekly meeting reminds every week) through the rules *and*
+  the Director's spoken reminder as before; `link` to a task or project;
+  `agent` — an agent can book a follow-up and be the one reminded.
+  **`GET /calendar/ics`** exports (subscribe from a real calendar);
+  **`POST /calendar/import`** takes an .ics — the same UID updates instead of
+  duplicating. `GET /calendar` returns the events and the next 30 days of
+  occurrences. The 📅 tab gained repeat, all-day, 📤 / 📥 .ics, and a
+  day-grouped list.
+- **Codex as a system tool** (`daemon/codex.js`; design G2). The office runs
+  `codex exec --json -C <project> -s workspace-write --ephemeral` itself, the
+  task on stdin, the JSONL streamed into a live run (a 🧑‍💻 mission row at the
+  caller's desk; steps in ⚙ → 🧑‍💻 CODEX), and returns the final message plus
+  a **diff summary** scoped to the directory. Four doors: `POST /codex/exec`
+  (told to every agent when Codex is installed), the Director's
+  **`DELEGATE: codex @ <project> :: <task>`** (reports back like a teammate's
+  result), a **🧑‍💻 Codex workflow node**, and **`bagidea codex "…"
+  --project x`**. `POST /codex/review` / `bagidea codex review` runs
+  `codex exec review` as a **second opinion**. It works only inside registered
+  projects or the workspace; 👻 GHOST ISOLATION applies unchanged (its own
+  worktree, edits arrive as a branch); the cost is **estimated** on the
+  caller's budget line (`BRAIN_PRICES.codex`, labelled ≈). Settings in
+  ⚙ → 🧑‍💻 CODEX: enabled, sandbox, model, `--oss` local provider
+  (ollama / LM Studio), max minutes. Never the brain: persona, memory,
+  permissions and the world stay on the agent that called it.
+- **Plugin hooks** (design H; every existing plugin keeps working):
+  `onEvent(type, evt)` on the module; `ctx.notify(item)`;
+  `ctx.approvals.ask(item)` → promise (what #48 / #50 wanted); `ctx.tasks`,
+  `ctx.calendar`; `ctx.schedule(job)`; **`ctx.triggers.register(kind, def)`**
+  — a new trigger kind that appears in the Builder's ⚡ panel as `🧩 …`;
+  **`ctx.workflow.node(kind, impl, meta)`** — a new node type in the palette
+  (`GET /workflows/types`); **`ctx.memory.provider(fn)`** — the narrow hook
+  agreed in #42: lines at prompt-assembly time for agents that **opt in**
+  (agent editor → 🧠 MEMORY PLUGINS; `memoryPlugins` on the agent), the core
+  owning the 800 ms timeout and the ~1500-character budget, a throw yielding
+  zero lines; and `ctx.codex.exec / review`. Registrations are tagged with the
+  plugin id and dropped on reload. `GET /plugins` lists each plugin's `hooks`.
+- **CLI:** `bagidea tasks [column]`, `bagidea task add|done|move`,
+  `bagidea cal [add|ics]`, `bagidea codex ["task" | review]`.
+- **Guides:** [`docs/guide/tasks.md`](docs/guide/tasks.md),
+  [`docs/guide/codex.md`](docs/guide/codex.md), a *Hooks* section in
+  [`docs/guide/plugins.md`](docs/guide/plugins.md).
+- **Tests** — `tasks-calendar.test.js` (9) and `codex-hooks.test.js` (8),
+  plus wiring: a fake Codex binary that speaks the JSONL protocol end to end,
+  the argument shape (stdin prompt, sandbox, `-C`, review flags, `--oss`),
+  failure paths; memory providers that are opt-in, budgeted, time-boxed and
+  throw-safe; a plugin's trigger kind that really fires and a node that really
+  runs, both gone after a reload; recurrence expansion, per-occurrence
+  reminders, an ICS round trip with UID de-duplication.
+
+**Fixed**
+- **The Director was still being instructed in Thai.** `directorNote()` (the
+  split-into-sub-agents guidance, the PROJECT protocol, DEFINITION OF DONE),
+  the `<work-autonomy>` note every delegation carries, `projectNote()` (the
+  project list, the iron rules, the system-tools list), the heartbeat prompt,
+  the resume-after-limit prompt, the proposal-approved order and the
+  break-room PROPOSAL instruction — all English now, in the same sweep that
+  wired Codex into them. The #49 guard covers every one of these blocks and
+  the new modules, and skips display-only strings (`logPrompt`, chat lines).
+
+**Changed**
+- The 🗂 OFFICE OPS window opens on 📋 TASKS (the board); scheduled jobs moved
+  to their own 🔁 JOBS tab.
+- The job-creation code is one function (`createJob`) shared by the route
+  and by plugins' `ctx.schedule`.
+- Codex's diff summary is scoped to the directory it worked in (`-- .`), so a
+  workspace inside a larger repository never reports the repository's changes.
+
 ## [1.3.0] — 🔀 It runs
 
 The v2 plan's third release — the core of the machine. A workflow stops being a
