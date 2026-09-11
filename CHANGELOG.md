@@ -4,6 +4,74 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.5.0] — 🧩 It's useful
+
+The v2 plan's fifth release — the plugins, teams and tools that make the
+machine worth having: *"I use it for marketing / planning / automation"* is
+true now.
+
+**Added**
+- **The official plugin library** (`daemon/plugin-library/`, `GET /plugins/library`,
+  `POST /plugins/library/install { id }`, 🧩 → 📦 OFFICIAL LIBRARY,
+  `bagidea plugin library` / `plugin install <id>`). A fresh install still
+  starts with no plugins — that policy stands — but seven now ship with the
+  office and install in one click, each built on the v1.4 hooks:
+  - 📣 **campaign-board** — posts as cards on the office board (channel, date,
+    brand voice), copy drafted by an agent turn, `ctx.approvals.ask` before
+    anything is published, publishing through the tools the agent has; a
+    card dragged to *done* counts as published by hand; a `campaign-post` node.
+  - 📰 **content-pipeline** — an **`rss` trigger kind** (a dependency-free
+    RSS/Atom reader, primed on first poll so it never floods) and a
+    **`fetch-article` node** (HTML → readable text), plus the pipeline:
+    item → article → summary → draft → approval → channel.
+  - 🐙 **github-triage** — `setup owner/repo :: secret` installs a workflow
+    (webhook → `action == opened` → label/draft → **approval** → post with
+    `gh` → notify) and an HMAC webhook trigger, and prints the URL and the
+    tunnel hint; `triage owner/repo#n` runs one by hand.
+  - 📬 **inbox-agent** — a schedule, a classification pass through the
+    agent's own mail tool, drafts, a decision that skips the approval when
+    nothing needs a reply, and an approval in front of every send.
+  - 📊 **weekly-report** — a `gather-report` node that reads the office's own
+    records (cards done, open and overdue, workflow runs, spend, upcoming
+    events), a Director turn that writes it, delivery to the channel, the
+    report kept on disk; scheduled on a weekday.
+  - 🗂 **client-folders** — a file trigger and a workflow per client, the
+    agent you chose, optional instructions; every file is a card owned by
+    that agent, closed when the run finishes.
+  - 🧠 **decision-log** — "we decided X because Y" with supersede chains and
+    retirement; the **memory provider** injects the newest active decisions
+    for agents that opted in; a `decision-log` node records a step's
+    conclusion.
+- **Team templates** (`daemon/teams/*.json`, `GET /teams`,
+  `POST /teams/hire { id }`, ⚙ → AGENTS → 👥 HIRE A TEAM, `bagidea teams`,
+  `bagidea hire --team <id>`): dev-shop, research-lab, content-studio,
+  customer-support, solo-assistant. Personas, roles, avatars, auras, voices
+  and builtin skills; an existing agent id is never overwritten; the hire cap
+  applies; a template is plain data you can copy.
+- **Nine tools in the Hub**, each verified on npm and described in all 14
+  languages: Stripe, Airtable, Trello, Asana, YouTube Data, Google Calendar,
+  Gmail, Bluesky, HubSpot (53 entries now).
+- **Schedule triggers take a weekday** (`cfg.weekday` 0–6 with `at`).
+- Plugins can save and start workflows (`ctx.workflow.save/exists/load/runs`),
+  manage their own triggers (`ctx.triggers.add/update/remove/list/get`), and
+  borrow the engine's http client (`require(daemonDir + "/workflows").httpFetch`).
+- **Guides:** [`docs/guide/library.md`](docs/guide/library.md),
+  [`docs/guide/teams.md`](docs/guide/teams.md).
+- **Tests** — `library-teams.test.js` (10): every library plugin loads in the
+  real host and registers the hooks its manifest claims; decision-log's
+  supersede chain reaches the memory hook newest-first; weekly-report's
+  weekday schedule fires on Friday and not Thursday; client-folders wires a
+  file trigger per client and cards each file; github-triage's workflow has
+  the approval in front of the post and never leaks the secret;
+  content-pipeline parses RSS and Atom and its fetch node strips navigation;
+  campaign-board plans → drafts → approves → publishes on drag; inbox-agent
+  keeps every send behind an approval; every team template is well-formed,
+  English, and references real skills.
+
+**Changed**
+- The 🧩 PLUGINS window shows the library under the installed list; the
+  ⚙ AGENTS tab gains 👥 HIRE A TEAM.
+
 ## [1.4.0] — 📋 It works
 
 The v2 plan's fourth release — the surfaces on top of the engine: a board that
