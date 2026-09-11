@@ -74,6 +74,18 @@ module.exports = function initWorkflows(ctx) {
   }
 
   // ---- storage ----------------------------------------------------------------
+  // Write a workflow file (plugins install their templates this way). An id that
+  // starts with "example-" is read-only; a missing id gets one.
+  function save(wf, opts = {}) {
+    let id = String((wf && wf.id) || "").replace(/[^\w-]/g, "");
+    if (!id || id.startsWith("example-")) id = "wf_" + now();
+    const file = path.join(DIR, id + ".json");
+    if (opts.ifMissing && fs.existsSync(file)) return { id, existed: true };
+    fs.mkdirSync(DIR, { recursive: true });
+    fs.writeFileSync(file, JSON.stringify({ id, name: (wf && wf.name) || "Workflow", nodes: (wf && wf.nodes) || [], edges: (wf && wf.edges) || [] }, null, 2));
+    return { id, existed: false };
+  }
+  function exists(id) { const clean = String(id || "").replace(/[^\w-]/g, ""); return !!clean && fs.existsSync(path.join(DIR, clean + ".json")); }
   function load(id) {
     const clean = String(id || "").replace(/[^\w-]/g, "");
     if (!clean) return null;
@@ -458,8 +470,10 @@ module.exports = function initWorkflows(ctx) {
 
   return { load, start, resume, resumeAll, cancel, runs, getRun: (id) => { const r = live.get(id) || readRun(id); return r ? summary(r) : null; },
            getRunFull: (id) => live.get(id) || readRun(id), render, parseDelay, decisionEdge, AGENT_TYPES,
-           registerNode, unregisterOwner, nodeTypes, TYPES: BUILTIN };
+           registerNode, unregisterOwner, nodeTypes, save, exists, dir: DIR, TYPES: BUILTIN };
 };
+// Plugins may borrow the tiny client (require(path.join(ctx.daemonDir, "workflows")).httpFetch).
+module.exports.httpFetch = httpFetch;
 
 // A tiny http(s) client — no dependencies, no redirects beyond one hop.
 function httpFetch(url, o = {}) {

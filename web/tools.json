@@ -724,6 +724,177 @@
         "risk": "แล้วแต่คุณ",
         "desc": "ออฟฟิศรองรับมาตรฐาน MCP แบบเปิด — วางคำสั่งรันเซิร์ฟเวอร์ตัวไหนก็ได้ (หรือ URL https:// ที่เขาโฮสต์) ใน ⚙ → MCP SERVERS แล้ว assign ให้ agent ดูทั้ง ecosystem ได้"
       }
+    },
+    {
+      "id": "stripe",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "💳",
+      "name": "Stripe",
+      "cmd": "npx -y @stripe/mcp --tools=all --api-key=<STRIPE_SECRET_KEY>",
+      "repo": "https://github.com/stripe/agent-toolkit",
+      "en": {
+        "desc": "Stripe's own server: customers, products, prices, invoices, payment links, subscriptions, refunds and balance — the agent can look up a customer or draft an invoice; charging and refunding are actions you should keep behind approval.",
+        "risk": "moves money",
+        "needs": "a Stripe secret key — replace <STRIPE_SECRET_KEY> in the command (use a restricted key)"
+      },
+      "th": {
+        "desc": "เซิร์ฟเวอร์ของ Stripe เอง: ลูกค้า สินค้า ราคา ใบแจ้งหนี้ ลิงก์ชำระเงิน subscription การคืนเงิน และยอดคงเหลือ — agent ค้นหาลูกค้าหรือร่างใบแจ้งหนี้ได้ ส่วนการเรียกเก็บและคืนเงินควรผ่านการอนุมัติเสมอ",
+        "risk": "เกี่ยวกับเงิน",
+        "needs": "Stripe secret key — แทนที่ <STRIPE_SECRET_KEY> ในคำสั่ง (ใช้ restricted key)"
+      }
+    },
+    {
+      "id": "airtable",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "🗃",
+      "name": "Airtable",
+      "cmd": "npx -y airtable-mcp-server",
+      "repo": "https://github.com/domdomegg/airtable-mcp-server",
+      "en": {
+        "desc": "Read and write Airtable bases: list tables, search and filter records, create and update rows, inspect fields. A CRM, a content calendar or a client list in Airtable becomes something the agents can keep up to date.",
+        "risk": "edits your data",
+        "needs": "AIRTABLE_API_KEY in the environment (a personal access token)"
+      },
+      "th": {
+        "desc": "อ่านและเขียน Airtable: ดูตาราง ค้นหาและกรอง record สร้างและแก้แถว ดู field — CRM ปฏิทินคอนเทนต์ หรือรายชื่อลูกค้าใน Airtable กลายเป็นสิ่งที่ agents อัปเดตให้ได้",
+        "risk": "แก้ไขข้อมูลของคุณ",
+        "needs": "AIRTABLE_API_KEY ใน environment (personal access token)"
+      }
+    },
+    {
+      "id": "trello",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "📌",
+      "name": "Trello",
+      "cmd": "npx -y @delorenj/mcp-server-trello",
+      "repo": "https://github.com/delorenj/mcp-server-trello",
+      "en": {
+        "desc": "Boards, lists and cards on Trello: read a board, move cards, add comments and checklists, create cards from what an agent found. Pairs with the office's own 📋 board when a client lives on Trello.",
+        "risk": "edits your boards",
+        "needs": "TRELLO_API_KEY and TRELLO_TOKEN in the environment"
+      },
+      "th": {
+        "desc": "บอร์ด ลิสต์ และการ์ดบน Trello: อ่านบอร์ด ย้ายการ์ด เพิ่มคอมเมนต์และ checklist สร้างการ์ดจากสิ่งที่ agent พบ — ใช้คู่กับบอร์ด 📋 ของออฟฟิศเมื่อลูกค้าใช้ Trello",
+        "risk": "แก้ไขบอร์ดของคุณ",
+        "needs": "TRELLO_API_KEY และ TRELLO_TOKEN ใน environment"
+      }
+    },
+    {
+      "id": "asana",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "✅",
+      "name": "Asana",
+      "cmd": "npx -y @roychri/mcp-server-asana",
+      "repo": "https://github.com/roychri/mcp-server-asana",
+      "en": {
+        "desc": "Asana projects and tasks: search, create and update tasks, assign, comment, read sections and custom fields. The team's Asana stays in sync with what the agents actually did.",
+        "risk": "edits your tasks",
+        "needs": "ASANA_ACCESS_TOKEN in the environment (a personal access token)"
+      },
+      "th": {
+        "desc": "โปรเจกต์และงานใน Asana: ค้นหา สร้างและอัปเดตงาน มอบหมาย คอมเมนต์ อ่าน section และ custom field — Asana ของทีมตรงกับสิ่งที่ agents ทำจริง",
+        "risk": "แก้ไขงานของคุณ",
+        "needs": "ASANA_ACCESS_TOKEN ใน environment (personal access token)"
+      }
+    },
+    {
+      "id": "youtube",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "▶️",
+      "name": "YouTube Data",
+      "cmd": "npx -y youtube-data-mcp-server",
+      "repo": "https://github.com/icraft2170/youtube-data-mcp-server",
+      "en": {
+        "desc": "Search videos and channels, read statistics, descriptions, transcripts and comments through the YouTube Data API. For the Content Pipeline: what a channel published, what performed, what people said.",
+        "risk": "reads public data",
+        "needs": "YOUTUBE_API_KEY in the environment (a Google Cloud API key with the YouTube Data API enabled)"
+      },
+      "th": {
+        "desc": "ค้นหาวิดีโอและช่อง อ่านสถิติ คำอธิบาย transcript และคอมเมนต์ผ่าน YouTube Data API — สำหรับ Content Pipeline: ช่องนี้โพสต์อะไร อันไหนไปได้ดี คนพูดถึงว่าอย่างไร",
+        "risk": "อ่านข้อมูลสาธารณะ",
+        "needs": "YOUTUBE_API_KEY ใน environment (Google Cloud API key ที่เปิด YouTube Data API)"
+      }
+    },
+    {
+      "id": "google-calendar",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "📆",
+      "name": "Google Calendar",
+      "cmd": "npx -y @cocal/google-calendar-mcp",
+      "repo": "https://github.com/nspady/google-calendar-mcp",
+      "en": {
+        "desc": "Your real calendar: list and search events, find free slots, create, move and delete events, across calendars. Alongside the office's own 📅 calendar (which also exports .ics) when your life is on Google.",
+        "risk": "edits your calendar",
+        "needs": "GOOGLE_OAUTH_CREDENTIALS pointing at an OAuth client JSON from Google Cloud; the first run opens a sign-in"
+      },
+      "th": {
+        "desc": "ปฏิทินจริงของคุณ: ดูและค้นหานัด หาช่องว่าง สร้าง ย้าย และลบนัด ข้ามหลายปฏิทิน — ใช้คู่กับปฏิทิน 📅 ของออฟฟิศ (ซึ่งส่งออก .ics ได้) เมื่อชีวิตคุณอยู่บน Google",
+        "risk": "แก้ไขปฏิทินของคุณ",
+        "needs": "GOOGLE_OAUTH_CREDENTIALS ชี้ไปที่ไฟล์ OAuth client JSON จาก Google Cloud; ครั้งแรกจะเปิดหน้าล็อกอิน"
+      }
+    },
+    {
+      "id": "gmail",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "✉️",
+      "name": "Gmail",
+      "cmd": "npx -y @gongrzhe/server-gmail-autoauth-mcp",
+      "repo": "https://github.com/GongRzhe/Gmail-MCP-Server",
+      "en": {
+        "desc": "Read, search, label, draft and send Gmail. What the 📬 Inbox Agent plugin drives: classify what came in, draft replies, and send only what you approved. Sending is outward — keep it behind an approval.",
+        "risk": "sends email",
+        "needs": "a Google OAuth client JSON at ~/.gmail-mcp/gcp-oauth.keys.json, then run: npx @gongrzhe/server-gmail-autoauth-mcp auth"
+      },
+      "th": {
+        "desc": "อ่าน ค้นหา ติดป้าย ร่าง และส่ง Gmail — สิ่งที่ plugin 📬 Inbox Agent ใช้: จัดประเภทเมลที่เข้ามา ร่างคำตอบ และส่งเฉพาะที่คุณอนุมัติ การส่งคือการติดต่อออกนอก ควรผ่านการอนุมัติเสมอ",
+        "risk": "ส่งอีเมล",
+        "needs": "ไฟล์ Google OAuth client JSON ที่ ~/.gmail-mcp/gcp-oauth.keys.json แล้วรัน: npx @gongrzhe/server-gmail-autoauth-mcp auth"
+      }
+    },
+    {
+      "id": "bluesky",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "🦋",
+      "name": "Bluesky",
+      "cmd": "npx -y mcp-server-bluesky",
+      "repo": "https://github.com/brianellin/mcp-server-bluesky",
+      "en": {
+        "desc": "Post, reply, like, follow and read timelines on Bluesky. The publishing leg of the 📣 Campaign Board for an account there — with the approval node in front of every post.",
+        "risk": "posts publicly",
+        "needs": "BLUESKY_IDENTIFIER (your handle) and BLUESKY_PASSWORD (an app password, not your main one) in the environment"
+      },
+      "th": {
+        "desc": "โพสต์ ตอบ ไลก์ ติดตาม และอ่าน timeline บน Bluesky — ขาเผยแพร่ของ 📣 Campaign Board สำหรับบัญชีที่นั่น โดยมี approval อยู่หน้าทุกโพสต์",
+        "risk": "โพสต์สาธารณะ",
+        "needs": "BLUESKY_IDENTIFIER (handle ของคุณ) และ BLUESKY_PASSWORD (app password ไม่ใช่รหัสหลัก) ใน environment"
+      }
+    },
+    {
+      "id": "hubspot",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "🧲",
+      "name": "HubSpot",
+      "cmd": "npx -y @hubspot/mcp-server",
+      "repo": "https://github.com/HubSpot/mcp-server",
+      "en": {
+        "desc": "HubSpot's own server: contacts, companies, deals, tickets, notes and associations. A support or sales team's CRM the agents can read before replying and update after.",
+        "risk": "edits your CRM",
+        "needs": "PRIVATE_APP_ACCESS_TOKEN in the environment (a HubSpot private app token)"
+      },
+      "th": {
+        "desc": "เซิร์ฟเวอร์ของ HubSpot เอง: contact บริษัท deal ticket โน้ต และความเชื่อมโยง — CRM ของทีมขาย/ซัพพอร์ตที่ agents อ่านก่อนตอบและอัปเดตหลังจากนั้น",
+        "risk": "แก้ไข CRM ของคุณ",
+        "needs": "PRIVATE_APP_ACCESS_TOKEN ใน environment (private app token ของ HubSpot)"
+      }
     }
   ]
 }

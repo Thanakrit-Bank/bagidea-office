@@ -98,6 +98,10 @@ Work
   bagidea codex                 Codex status + recent runs
   bagidea codex "<task>" --project <name>   Hand Codex a task (returns when it finishes)
   bagidea codex review [project]            A second-opinion review of the uncommitted changes
+  bagidea teams                 Team templates, and who is already hired
+  bagidea hire --team dev-shop  Hire a whole template team (existing agents are never overwritten)
+  bagidea plugin library        The official plugins that ship with the office
+  bagidea plugin install <id>   Install one by id (a git URL still works)
 
 Maintenance
   bagidea doctor                Diagnose why the office won't load — port, proxy,

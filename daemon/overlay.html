@@ -3333,7 +3333,9 @@
         <input id="aFilter" class="filterbox" placeholder="🔍 ค้นหา agent…">
         <div id="alist" class="biglist"></div>
         <div id="staffCount" class="hint" style="text-align:center;margin:4px 0 6px;opacity:.75"></div>
-        <button class="bigbtn" id="newAgent">＋ Hire a new agent</button>`;
+        <button class="bigbtn" id="newAgent">＋ Hire a new agent</button>
+        <button class="bigbtn" id="hireTeam" style="margin-top:6px">👥 HIRE A TEAM — ทีมสำเร็จรูป (dev shop · research lab · content studio · support · solo)</button>
+        <div id="teamPick"></div>`;
     } else if (tab === "skills") {
       bodyHtml = `<div class="switch ${AUTOSKILLS ? "on" : ""}" id="autoSw">
           <div class="knob"></div> Auto-learn: agents distill finished work into new skills</div>
@@ -3534,6 +3536,28 @@
       const nStaff = Object.keys(ROSTER).filter((x) => x !== "ceo").length;
       const scEl = modalCard.querySelector("#staffCount");
       if (scEl) scEl.textContent = `${nStaff} / ${MAXSTAFF} agents`;
+      // 👥 team templates (v1.5): a whole pre-built team in one click.
+      modalCard.querySelector("#hireTeam").onclick = async () => {
+        const pick = modalCard.querySelector("#teamPick");
+        if (pick.innerHTML) { pick.innerHTML = ""; return; }
+        const tj = await fetch("/teams").then((x) => x.json()).catch(() => ({ teams: [] }));
+        pick.innerHTML = "";
+        for (const t of tj.teams || []) {
+          const row = document.createElement("div"); row.className = "arow"; row.style.cursor = "default";
+          const missing = t.agents.filter((a) => !a.present).length;
+          row.innerHTML = `<div class="meta"><b>${esc(t.name)}</b><span>${esc(t.tagline)} · ${t.agents.map((a) => (a.present ? "✓ " : "") + a.name + " (" + a.role + ")").join(", ")}</span></div>` +
+            `<div class="winbtn" title="จ้างทีมนี้">${missing ? "👥" : "✓"}</div>`;
+          row.querySelector(".winbtn").onclick = async () => {
+            if (!missing) return addChip(tr("ทีมนี้อยู่ในออฟฟิศแล้ว"));
+            if (!(await askConfirm(tr("จ้างทีมนี้ทั้งชุด?") + " " + t.name + " — " + missing + " " + tr("คน")))) return;
+            const rr = await uiPost("/teams/hire", { id: t.id });
+            const j = await rr.json().catch(async () => ({ hired: [], error: await rr.text() }));
+            addChip(j.hired && j.hired.length ? `👥 ${tr("จ้างแล้ว")}: ${j.hired.join(", ")}` + (j.skipped && j.skipped.length ? ` · ${tr("ข้าม")} ${j.skipped.length}` : "") : tr("✗ จ้างไม่สำเร็จ") + ": " + String(j.error || "").slice(0, 80));
+            openSettings("agents");
+          };
+          pick.appendChild(row);
+        }
+      };
       const hireBtn = modalCard.querySelector("#newAgent");
       hireBtn.onclick = () => {
         if (nStaff >= MAXSTAFF) return addChip(`ออฟฟิศเต็มแล้ว — สูงสุด ${MAXSTAFF} คน (ใช้การแตกร่างผีสำหรับงานขนาน)`);
@@ -4600,6 +4624,8 @@
          <div style="font-size:10px;color:var(--dim);margin-top:5px">
            หรือวางโฟลเดอร์เองใน <code>plugins/</code> แล้วกด 🔄 · เขียน plugin เอง: docs/guide/plugins.md</div>
        </div>
+       <div class="field" style="margin-top:12px"><label>📦 OFFICIAL LIBRARY — plugins ที่มากับออฟฟิศ กดติดตั้งทีเดียว</label>
+         <div id="plgLib"><span style="font-size:11px;color:var(--dim)">…</span></div></div>
        <button class="bigbtn" id="plgReload">🔄 โหลด plugins ใหม่</button>`;
     modalCard.querySelector("#plgHub").onclick = () =>
       popWindow("/pluginshub", "🧩 Plugins Hub", "pluginshub", { w: 880, h: 720 });
@@ -4646,6 +4672,25 @@
     }
     wirePins(box, openPlugins);
     wireFilter(modalCard.querySelector("#plgFilter"), box);
+    // 📦 the library that ships with the office — one click, no clone.
+    fetch("/plugins/library").then((x) => x.json()).then((lj) => {
+      const lb = modalCard.querySelector("#plgLib"); if (!lb) return;
+      const avail = (lj.library || []).filter((p) => !p.installed);
+      lb.innerHTML = avail.length ? "" : `<span style="font-size:11px;color:var(--dim)">${tr("ติดตั้งครบแล้ว")}</span>`;
+      for (const p of avail) {
+        const row = document.createElement("div"); row.className = "arow"; row.style.cursor = "default";
+        row.innerHTML = `<div class="meta"><b>${esc(p.name)}</b><span>${esc(p.description || "")}${p.library && p.library.for ? " · " + esc(p.library.for) : ""}${p.library && p.library.needs ? " · ⚠ " + esc(p.library.needs) : ""}</span></div>` +
+          `<div class="winbtn" title="ติดตั้ง">⬇</div>`;
+        row.querySelector(".winbtn").onclick = async () => {
+          row.querySelector(".winbtn").textContent = "…";
+          const rr = await uiPost("/plugins/library/install", { id: p.id });
+          const j = await rr.json().catch(async () => ({ ok: false, error: await rr.text() }));
+          addChip(j.ok ? tr("📦 ติดตั้งแล้ว") + ": " + p.name : tr("✗ ติดตั้งไม่สำเร็จ") + ": " + String(j.error || "").slice(0, 100));
+          openPlugins();
+        };
+        lb.appendChild(row);
+      }
+    }).catch(() => {});
     // Async: ask the daemon which git-installed plugins are behind their repo,
     // then drop an "⬆ update" control onto those rows (read-only check; no fetch).
     fetch("/plugins/check-updates", { method: "POST", headers: { "x-bagidea-ui": "1" } })

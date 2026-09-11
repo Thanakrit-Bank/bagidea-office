@@ -145,6 +145,8 @@ function help() {
   row('task add "<title>" [--owner id] [--due YYYY-MM-DD] [--p 1-4]', "Add a card · task done <n|id> · task move <n|id> <status>");
   row('cal [add "<title>" <YYYY-MM-DDTHH:MM> [--every day|week|month]]', "Upcoming events (30 days) · `cal ics > office.ics` exports");
   row('codex ["<task>" --project <name>]', "Codex status + recent runs, or hand it a task · codex review [project]");
+  row("teams · hire --team <id>", "Pre-built teams (dev-shop · research-lab · content-studio · customer-support · solo-assistant)");
+  row("plugin library · plugin install <id>", "The official plugins that ship with the office — install by id");
 
   head("Maintenance");
   row("doctor", "Diagnose why the office won't load (ports, proxy, firewall)");
@@ -412,6 +414,30 @@ async function main() {
     const projects = Object.entries(j.projects || {}); if (projects.length) { head("projects (lifetime)"); for (const [id, p] of projects) console.log(`  ${id.padEnd(14)} ${bar(p.total, p.cap)}`); }
     info(`digest: ${j.digest.enabled ? "on at " + j.digest.time : "off"}  ·  set caps: bagidea budget set office 5`);
     console.log("");
+    return;
+  }
+
+  // ---- 👥 teams (v1.5) --------------------------------------------------------
+  if (cmd === "teams") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const j = await req("GET", "/teams");
+    banner(); head(`👥 Team templates (${j.staff}/${j.max} staff)`);
+    for (const t of j.teams || []) {
+      console.log(`  ${c.bold}${t.id.padEnd(18)}${c.reset} ${t.name}  ${c.gray}${t.tagline}${c.reset}`);
+      console.log(`  ${" ".repeat(18)} ${c.gray}${t.agents.map((a) => (a.present ? "✓ " : "") + a.name + " (" + a.role + ")").join(" · ")}${c.reset}`);
+    }
+    info("hire one: bagidea hire --team dev-shop");
+    console.log(""); return;
+  }
+  if (cmd === "hire") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const i = rest.indexOf("--team"); const id = i > -1 ? rest[i + 1] : rest[0];
+    if (!id) return bad("usage: bagidea hire --team <id>   (see: bagidea teams)");
+    const r = await req("POST", "/teams/hire", { id });
+    if (!r || typeof r === "string") return bad(String(r || "hire failed"));
+    if (r.hired.length) ok(`hired ${r.hired.join(", ")} (${r.staff}/${r.max} staff)`);
+    for (const s of r.skipped || []) warn(`skipped ${s.id}: ${s.why}`);
+    if (!r.hired.length && !(r.skipped || []).length) info("nothing to hire");
     return;
   }
 
@@ -980,11 +1006,24 @@ async function main() {
     const sub = rest[0];
     const arg = rest.slice(1).join(" ").trim();
     if (sub === "install") {
-      if (!arg) return info("Usage: bagidea plugin install <git-url>");
+      if (!arg) return info("Usage: bagidea plugin install <git-url | library id>   (bagidea plugin library lists the ids)");
+      // A bare id installs from the library that ships with the office.
+      if (!/^https?:\/\//.test(arg)) {
+        const r = await req("POST", "/plugins/library/install", { id: arg });
+        if (r && r.ok) return ok(`Installed ${c.bold}${r.name}${c.reset} from the library`);
+        return bad(typeof r === "string" ? r : (r && r.error) || "install failed");
+      }
       info("📦 cloning + installing…");
       const r = await req("POST", "/plugins/install", { url: arg });
       if (r && r.ok) return ok(`Installed plugin ${c.bold}${r.name}${c.reset}`);
       return bad(typeof r === "string" ? r : "install failed");
+    }
+    if (sub === "library" || sub === "lib") {
+      const j = await req("GET", "/plugins/library");
+      banner(); head("📦 Official plugin library");
+      for (const p of j.library || []) console.log(`  ${p.installed ? c.gray + "✓" : c.accent + "·"}${c.reset} ${c.bold}${p.id.padEnd(18)}${c.reset} ${p.name}${c.gray} — ${String(p.description || "").slice(0, 90)}${c.reset}`);
+      info("install one: bagidea plugin install <id>");
+      console.log(""); return;
     }
     if (sub === "remove" || sub === "rm") {
       if (!arg) return info("Usage: bagidea plugin remove <id>");
@@ -992,7 +1031,7 @@ async function main() {
       if (typeof r === "string" && r && !/^ok$/i.test(r)) return bad(r);
       return ok(`Removed plugin ${c.bold}${arg}${c.reset}`);
     }
-    return info("Usage: bagidea plugin <install <git-url> | remove <id>>");
+    return info("Usage: bagidea plugin <install <git-url | library id> | library | remove <id>>");
   }
 
   if (cmd === "proposals") {

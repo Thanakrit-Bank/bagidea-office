@@ -131,7 +131,8 @@ module.exports = (ctx) => ({
 
 ### Hooks
 
-*New in v1.4.0.* Every hook is optional and additive — a plugin written for
+*New in v1.4.0.* The seven plugins in the [official library](library.md)
+are worked examples of every hook below — `daemon/plugin-library/<id>/index.js`. Every hook is optional and additive — a plugin written for
 v1.0 loads unchanged.
 
 **`onEvent(type, evt)`** — export it next to `onCommand` and the office calls

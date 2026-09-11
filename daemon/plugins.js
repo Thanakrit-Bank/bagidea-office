@@ -72,6 +72,9 @@ module.exports = function initPlugins(ctx) {
           ctx.triggers.registerKind(kind, def, id); names.triggers.push(kind);
         },
         fire: (kindOrId, data) => ctx.triggers && ctx.triggers.fireKind ? ctx.triggers.fireKind(kindOrId, data, id) : 0,
+        // the trigger records themselves (a plugin can wire its own workflow up)
+        add: (spec) => ctx.triggers.add({ ...spec, by: id }), update: (tid, patch) => ctx.triggers.update(tid, patch),
+        remove: (tid) => ctx.triggers.remove(tid), list: () => ctx.triggers.list(), get: (tid) => ctx.triggers.get(tid),
       },
       workflow: {
         node: (kind, impl, meta) => {
@@ -79,6 +82,9 @@ module.exports = function initPlugins(ctx) {
           ctx.workflows.registerNode(kind, impl, { ...(meta || {}), owner: id }); names.nodes.push(kind);
         },
         start: (wfOrId, o) => ctx.workflows && ctx.workflows.start ? ctx.workflows.start(wfOrId, o) : null,
+        // templates: save (once, with ifMissing) / load / runs
+        save: (wf, o) => ctx.workflows.save(wf, o), exists: (wid) => ctx.workflows.exists(wid), load: (wid) => ctx.workflows.load(wid),
+        runs: (o) => ctx.workflows.runs(o || {}), getRun: (rid) => ctx.workflows.getRun(rid), getRunFull: (rid) => ctx.workflows.getRunFull(rid),
       },
       memory: { provider: (fn) => { if (typeof fn !== "function") throw new Error("memory.provider needs a function"); memoryProviders.set(id, fn); } },
     };

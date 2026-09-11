@@ -101,7 +101,10 @@ module.exports = function initTriggers(ctx) {
       return o;
     }
     const o = {};
-    if (kind === "schedule") { o.everyMin = Math.max(0, Number(c.everyMin) || 0); o.at = /^\d\d:\d\d$/.test(c.at || "") ? c.at : ""; if (!o.everyMin && !o.at) o.everyMin = 60; }
+    if (kind === "schedule") {
+      o.everyMin = Math.max(0, Number(c.everyMin) || 0); o.at = /^\d\d:\d\d$/.test(c.at || "") ? c.at : ""; if (!o.everyMin && !o.at) o.everyMin = 60;
+      if (c.weekday !== undefined && c.weekday !== "" && c.weekday !== null) o.weekday = Math.max(0, Math.min(6, Number(c.weekday) || 0));   // 0 = Sunday … 6 = Saturday, with `at`
+    }
     if (kind === "webhook") { if (c.token) o.token = String(c.token).replace(/[^\w-]/g, "").slice(0, 64); if (c.secret !== undefined) o.secret = String(c.secret || ""); }
     if (kind === "event") o.type = String(c.type || "").slice(0, 60);
     if (kind === "file") { o.dir = String(c.dir || ""); o.glob = String(c.glob || "*"); }
@@ -129,6 +132,7 @@ module.exports = function initTriggers(ctx) {
         const d = new Date(t0), [hh, mm] = t.cfg.at.split(":").map(Number);
         const passed = d.getHours() > hh || (d.getHours() === hh && d.getMinutes() >= mm);
         due = passed && new Date(t.lastRun || 0).toDateString() !== d.toDateString();
+        if (due && t.cfg.weekday !== undefined && d.getDay() !== t.cfg.weekday) due = false;   // a weekly slot
       }
       if (due) { try { fire(t.id, { event: "schedule" }); fired++; } catch (e) { log("[trigger] schedule " + e.message); } }
     }

@@ -1913,6 +1913,63 @@ function createJob(p) {
   return job;
 }
 
+// 📦 The plugin library on disk (daemon/plugin-library/<id>/plugin.json).
+function pluginLibrary() {
+  const root = path.join(__dirname, "plugin-library");
+  const out = [];
+  let entries = [];
+  try { entries = fs.readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory()); } catch { return out; }
+  const installed = new Set(plugins.list().map((p) => p.id));
+  for (const e of entries) {
+    try {
+      const man = JSON.parse(fs.readFileSync(path.join(root, e.name, "plugin.json"), "utf8"));
+      out.push({ id: man.id || e.name, name: man.name, version: man.version, description: man.description, commands: (man.commands || []).length,
+        panel: !!man.panel, library: man.library || {}, installed: installed.has(man.id || e.name) || fs.existsSync(path.join(__dirname, "..", "plugins", man.id || e.name)), dir: path.join(root, e.name) });
+    } catch (err) { console.error("[library] bad manifest " + e.name + ": " + err.message); }
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
+}
+// 👥 Team templates on disk (daemon/teams/<id>.json).
+function teamTemplates() {
+  const root = path.join(__dirname, "teams");
+  const out = [];
+  try {
+    for (const f of fs.readdirSync(root).filter((x) => x.endsWith(".json"))) {
+      try { const t = JSON.parse(fs.readFileSync(path.join(root, f), "utf8")); if (t && t.id && Array.isArray(t.agents)) out.push(t); }
+      catch (e) { console.error("[teams] bad template " + f + ": " + e.message); }
+    }
+  } catch {}
+  return out;
+}
+function hireTeam(id) {
+  const t = teamTemplates().find((x) => x.id === id);
+  if (!t) throw new Error("no such team template: " + id);
+  const hired = [], skipped = [];
+  for (const a of t.agents) {
+    const aid = String(a.id || slugId(a.name)).replace(/[^\w-]/g, "");
+    if (!aid || reg.agents[aid]) { skipped.push({ id: aid, why: "exists" }); continue; }
+    if (staffCount() >= MAX_STAFF) { skipped.push({ id: aid, why: "office full" }); continue; }
+    const px = a.persona || {};
+    reg.agents[aid] = {
+      name: String(a.name || aid).slice(0, 40), role: String(a.role || "Specialist").slice(0, 40),
+      avatar: Math.min(Math.max(Number(a.avatar) || 1, 1), 12), aura: String(a.aura || "").slice(0, 16),
+      prompt: String(a.prompt || "").slice(0, 8000),
+      persona: { expertise: String(px.expertise || "").slice(0, 2000), personality: String(px.personality || "").slice(0, 2000), language: String(px.language || "").slice(0, 80), rules: String(px.rules || "").slice(0, 2000) },
+      tier: Math.min(Math.max(Number(a.tier) || 3, 1), 3), voice: String(a.voice || "").slice(0, 20),
+      skills: (Array.isArray(a.skills) ? a.skills : []).filter((s) => reg.skills[s]), tools: Array.isArray(a.tools) ? a.tools : [],
+      provider: "claude", model: "", backend: "", memoryPlugins: [], team: t.id,
+    };
+    hired.push(aid);
+  }
+  if (hired.length) {
+    saveReg(); pushRoster();
+    try { if (reg.nativeSkills !== false) for (const aid of hired) skillsSync.syncAgent(AGENTS_DIR, aid, reg.agents[aid].skills, reg.skills); } catch {}
+    broadcast({ type: "team.hired", team: t.id, agents: hired });
+    notify.send({ kind: "system", title: `👥 Hired the ${t.name} team`, body: hired.map((h) => reg.agents[h].name).join(", ") });
+  }
+  return { ok: true, team: t.id, hired, skipped, staff: staffCount(), max: MAX_STAFF };
+}
+
 function jobDue(job, now) {
   if (job.enabled === false || job.done) return false;
   if (job.mode === "every")
@@ -6242,6 +6299,52 @@ end tell`;
   } else if (req.method === "GET" && req.url === "/plugins") {
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ plugins: plugins.list() }));
+
+  // ---- 📦 the official plugin library (v1.5) ----------------------------------
+  // Plugins that ship WITH the office (daemon/plugin-library/) but are not
+  // installed until the owner says so — plugins/ stays empty by policy. One
+  // click copies the folder into plugins/<id> and reloads; from then on it is an
+  // ordinary plugin (data/ is its own, removal is the normal route).
+  } else if (req.method === "GET" && req.url === "/plugins/library") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ library: pluginLibrary() }));
+
+  } else if (req.method === "POST" && req.url === "/plugins/library/install") {
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        const id = String(JSON.parse(body || "{}").id || "").replace(/[^\w-]/g, "");
+        const entry = pluginLibrary().find((p) => p.id === id);
+        if (!entry) throw new Error("no such library plugin: " + id);
+        const dest = path.join(__dirname, "..", "plugins", id);
+        if (fs.existsSync(dest)) throw new Error("already installed: " + id);
+        fs.cpSync(entry.dir, dest, { recursive: true, filter: (src) => !/[\\/]data([\\/]|$)/.test(src.slice(entry.dir.length)) });
+        const result = plugins.load();
+        broadcast({ type: "plugins.changed" }, false);
+        const failed = (result.failed || []).find((f) => f.id === id);
+        if (failed) { res.writeHead(400, { "content-type": "application/json; charset=utf-8" }); return res.end(JSON.stringify({ ok: false, id, error: failed.error })); }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+        res.end(JSON.stringify({ ok: true, id, name: entry.name }));
+      } catch (e) { res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(String(e.message)); }
+    });
+
+  // ---- 👥 team templates (v1.5, design I) ------------------------------------
+  } else if (req.method === "GET" && req.url === "/teams") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ teams: teamTemplates().map((t) => ({ id: t.id, name: t.name, tagline: t.tagline, for: t.for,
+      agents: t.agents.map((a) => ({ id: a.id, name: a.name, role: a.role, avatar: a.avatar, present: !!reg.agents[a.id] })) })), staff: staffCount(), max: MAX_STAFF }));
+
+  } else if (req.method === "POST" && req.url === "/teams/hire") {
+    // Hire a whole template team at once. Agents whose id already exists are
+    // left alone (never overwritten); the hire cap still applies.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try {
+        const id = String(JSON.parse(body || "{}").id || "");
+        const r = hireTeam(id);
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(r));
+      } catch (e) { res.writeHead(400, { "content-type": "text/plain; charset=utf-8" }); res.end(String(e.message)); }
+    });
 
   } else if (req.method === "POST" && req.url === "/plugins/reload") {
     // load() syntax-checks every index.js (node --check) before require(), so a
