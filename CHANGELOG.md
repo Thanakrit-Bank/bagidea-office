@@ -4,6 +4,71 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.1.0] — 🔔 You'll know
+
+The first release of the v2 plan ([`docs/DESIGN-v2.md`](docs/DESIGN-v2.md)):
+*an office that runs while you're away, and can be trusted to.* Before it can
+run unattended it has to be able to ask you properly and to reach you when it
+does. This release is those two things, plus a free win.
+
+**Added**
+- **📥 One approvals queue** (`daemon/approvals.js`). Five separate things used
+  to wait on a person in five separate places — tool permissions in the Security
+  Center, a project's own hooks (trust), team pitches, an 🤖 AUTO agent's
+  `STATUS: BLOCKED`, and jobs created switched off. They now share one queue
+  with history, a note box, and the buttons each kind needs. Every old path
+  still works and closes its inbox item on the way, so the phone never shows a
+  card the office already settled. **Answering a blocked agent resumes the
+  work** with your answer — before, that block was a line on Telegram and a job
+  sitting idle until you came back.
+- **Answer from your phone.** Approvals are pushed to your channels; Telegram
+  gets inline buttons (one tap answers, the card settles so it can't be tapped
+  twice), and on every channel a typed reply works — `1 yes`, `2 no too risky`,
+  `2 continue use staging`, `/approve 1`, a bare `yes` when exactly one thing is
+  pending, `/inbox` to list. A reply that matches a pending item is answered on
+  the spot and never reaches the Director as an order.
+- **🔔 Notifications with rules** (`daemon/notify.js`, ⚙ → 🔔 NOTIFY). One
+  `notify.send()` behind every "tell the owner". Per kind — approval, blocked,
+  reminder, budget, done, workflow, proposal, mention, system — choose the
+  sidebar's 🔔 list (always on, with an unread count), an in-app toast, your
+  channels, and a sound; and *always*, *outside quiet hours*, or *only when
+  you've been away from the keyboard for five minutes*. Quiet hours may wrap
+  midnight. The old milestones→channels switch still mutes the channel leg.
+- **`bagidea inbox` · `approve` · `deny` · `answer` · `notify [test]`**, and
+  `GET /inbox`, `GET/POST /approvals`, `POST /approvals/respond`,
+  `GET /notify`, `POST /notify/send`, `/notify/read`, `/notify/rules`,
+  `/notify/presence` — `POST /approvals` is the primitive the author of
+  [#48](https://github.com/bagidea/bagidea-office/issues/48) /
+  [#50](https://github.com/bagidea/bagidea-office/issues/50) was building by
+  hand out of disabled jobs.
+- **🧑‍💻 Codex in the Tools Hub.** `codex mcp-server` as a one-click MCP entry
+  (44 entries now, 29 MCP): grant it to an agent and that agent can hand a
+  coding task to OpenAI's Codex, which works in the project and reports back
+  with a diff. It never replaces the caller. Translated into all 14 languages.
+  The deeper integration — Codex as a system tool and a workflow node with a
+  review mode — is v1.4.
+- **A guide:** [`docs/guide/inbox.md`](docs/guide/inbox.md).
+- **`daemon/tests/inbox.test.js`** — seventeen tests: the queue's ask/respond/
+  expiry/restart semantics, phone-reply parsing (a bare "yes" is accepted only
+  when it can't be ambiguous), rule routing, quiet hours across midnight, the
+  away gate, the legacy mute, and the wiring — every old path asks the queue,
+  the channel reply check runs before the Director sees the message, Telegram
+  handles `callback_query`, the overlay has the sections and pings presence,
+  Codex is translated everywhere.
+
+**Changed**
+- The 🛡 sidebar gains **🔔 NOTIFICATIONS** and **📥 APPROVALS** above the
+  Security Center; the badge now counts every pending approval, not only tool
+  permissions. Toasts stack in the corner of the chat window and open the item
+  on click.
+- The proposal verdict is one function (`decideProposal`) shared by the panel,
+  the chat card, the CLI and the phone, so every path agrees.
+
+Nothing changes what an agent may *do*: 🤖 AUTO and 🔓 auto-approve remain the
+switches for that. Everything new is on by default only where it matches how the
+office already behaved (milestones to channels); toasts and sounds follow the
+rules, and quiet hours are off until you set them.
+
 ## [1.0.5] — 🌐 The office stops instructing agents in Thai
 
 Five bugs, all reported from one live v1.0.4 office by

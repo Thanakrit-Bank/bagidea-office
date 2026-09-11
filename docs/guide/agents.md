@@ -41,6 +41,8 @@ actually exists — managers get fewer tools, hands-on roles get more). You can 
 - **Tools you tick = permanently allowed** — the agent uses them silently, with no prompt card (there's a log in the feed)
   and **without walking away from the desk** (it briefly pauses to confirm it really needs to go ask first)
 - Tools you *didn't* grant → the character walks into the Security Center and a request card pops up
+  — and the same request lands in **📥 APPROVALS** and on your phone, where one tap answers it
+  (see [the inbox guide](inbox.md))
   with the exact command it will run: **✓ Allow** (this time) / **✓✓ Always** (remember + add to the
   agent's tools) / **✗ Deny**
 - No answer within 50 seconds = auto-deny (the agent re-plans on its own)

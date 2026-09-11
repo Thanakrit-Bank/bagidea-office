@@ -78,6 +78,13 @@ Cost control
                                 delegated-work QA double-pass is skipped. Your direct
                                 orders are never slowed.
 
+Inbox
+  bagidea inbox                 What's waiting for you (numbered) + what's unread
+  bagidea approve <n|id> [note] Answer an item with its first option
+  bagidea deny <n|id> [note]    …with its last option
+  bagidea answer <n|id> <option> [note]   …with a specific option (continue, enable, always…)
+  bagidea notify [test]         Unread notifications · `test` sends one through your rules
+
 Maintenance
   bagidea doctor                Diagnose why the office won't load — port, proxy,
                                 firewall, execution policy, missing claude CLI.

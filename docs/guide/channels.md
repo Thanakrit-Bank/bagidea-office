@@ -87,6 +87,11 @@ the internet into your machine — the easiest is cloudflared:
 
 ## Work updates land in your channels (0.9.45+)
 
+Every approval the office needs from you is pushed to your channels too — with
+buttons on Telegram, and a typed reply (`1 yes`, `2 no too risky`, `/inbox`)
+on every channel. Which kinds reach your phone, and when, is set in
+**⚙ → 🔔 NOTIFY**. See [the inbox guide](inbox.md).
+
 The office now pushes milestones out to every connected channel, so long-running
 work is followable from your phone:
 

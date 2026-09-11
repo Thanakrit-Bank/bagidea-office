@@ -14,7 +14,6 @@
   "Run an installed slash command.": "पहले से इंस्टॉल किया हुआ स्लैश कमांड चलाता है।",
   "Read the output of a long-running background job.": "देर तक चलने वाले बैकग्राउंड काम का आउटपुट पढ़ता है।",
   "Stop a background job it started.": "अपने ही शुरू किए बैकग्राउंड काम को रोकता है।",
-
   "Drive a REAL browser — open pages, click, type, fill forms and screenshot — so an agent does tasks on the web for you. Isolated profile, not logged in. Ships built-in.": "असली ब्राउज़र चलाता है — पेज खोलना, क्लिक करना, टाइप करना, फ़ॉर्म भरना और स्क्रीनशॉट लेना, ताकि एजेंट वेब पर आपके काम निपटा दे। अलग प्रोफ़ाइल, कहीं लॉग-इन नहीं। शुरू से ही मौजूद।",
   "The same browser with no window — it works in the background instead of taking over your screen. Pick this one when agents run while you are using the machine.": "वही ब्राउज़र, पर बिना खिड़की के — आपकी स्क्रीन घेरने के बजाय पीछे काम करता है। जब आप खुद कंप्यूटर पर हों और एजेंट भी काम कर रहे हों, तब यही चुनें।",
   "Google's own DevTools as a tool: record a performance trace, read console errors and network requests, and debug a page the way a front-end engineer does. The one to reach for when a site is broken, not just to be clicked.": "गूगल के अपने DevTools को औज़ार बना दिया गया है: परफ़ॉर्मेंस ट्रेस रिकॉर्ड करना, कंसोल की त्रुटियाँ और नेटवर्क रिक्वेस्ट पढ़ना, और किसी पेज को उसी तरह खँगालना जैसे फ़्रंट-एंड इंजीनियर करता है। यह तब काम आता है जब साइट बिगड़ी हो, सिर्फ़ क्लिक करवाने के लिए नहीं।",
@@ -43,7 +42,6 @@
   "Query and inspect a Postgres database in plain language — schemas, indexes, performance analysis. Replaces the reference server npm has deprecated.": "Postgres डेटाबेस से आम भाषा में सवाल पूछें और उसे परखें — स्कीमा, इंडेक्स, परफ़ॉर्मेंस विश्लेषण। यह उस संदर्भ सर्वर की जगह लेता है जिसे npm ने बंद कर दिया है।",
   "Query a local .db SQLite file — good for prototypes and local apps.": "अपने कंप्यूटर की .db (SQLite) फ़ाइल से सवाल पूछें — प्रोटोटाइप और लोकल ऐप के लिए अच्छा।",
   "The office speaks the open MCP standard — paste any server's launch command (or a hosted https:// URL) in ⚙ → MCP SERVERS and assign it to an agent. Browse the whole ecosystem.": "यह दफ़्तर खुले MCP मानक को समझता है — ⚙ → MCP SERVERS में किसी भी सर्वर की चलाने वाली कमांड (या होस्ट किया हुआ https:// पता) चिपकाइए और किसी एजेंट को सौंप दीजिए। पूरा ecosystem खुला है।",
-
   "drives a browser": "ब्राउज़र चलाता है",
   "stores data locally": "डेटा आपके कंप्यूटर पर रखता है",
   "no risk": "कोई ख़तरा नहीं",
@@ -60,7 +58,6 @@
   "hosted · sign-in": "होस्ट किया हुआ · साइन-इन ज़रूरी",
   "database": "डेटाबेस",
   "your call": "आपकी मर्ज़ी",
-
   "npm i -g agent-browser && agent-browser install": "पहले इंस्टॉल करें: npm i -g agent-browser && agent-browser install",
   "edit the folder path first": "पहले फ़ोल्डर का पाथ बदलें",
   "install the Blender add-on + uv": "Blender का ऐड-ऑन इंस्टॉल करें + uv",
@@ -80,5 +77,8 @@
   "a Slack token in the environment": "एनवायरनमेंट में Slack टोकन",
   "a Sentry auth token": "Sentry का ऑथ टोकन",
   "edit the connection string first": "पहले कनेक्शन स्ट्रिंग बदलें",
-  "edit the .db file path first": "पहले .db फ़ाइल का पाथ बदलें"
+  "edit the .db file path first": "पहले .db फ़ाइल का पाथ बदलें",
+  "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.": "OpenAI Codex एक औज़ार के रूप में: कोडिंग का काम दूसरे एजेंट को सौंपिए, जो प्रोजेक्ट में काम करके diff के साथ लौटता है। यह बुलाने वाले एजेंट की जगह कभी नहीं लेता — persona, स्मृति और अनुमतियाँ बुलाने वाले के पास ही रहती हैं।",
+  "runs a second agent": "दूसरा एजेंट चलाता है",
+  "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)": "Codex CLI इंस्टॉल और लॉगिन किया हुआ (npm i -g @openai/codex, फिर codex login)"
 }

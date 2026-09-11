@@ -14,7 +14,6 @@
   "Run an installed slash command.": "インストール済みのスラッシュコマンドを実行します。",
   "Read the output of a long-running background job.": "時間のかかるバックグラウンド処理の出力を読みます。",
   "Stop a background job it started.": "自分で開始したバックグラウンド処理を止めます。",
-
   "Drive a REAL browser — open pages, click, type, fill forms and screenshot — so an agent does tasks on the web for you. Isolated profile, not logged in. Ships built-in.": "本物のブラウザを操作します。ページを開き、クリックし、入力し、フォームを埋め、スクリーンショットを撮る。ウェブ上の用事を代わりに片づけてくれます。プロファイルは独立、ログインなし。標準搭載。",
   "The same browser with no window — it works in the background instead of taking over your screen. Pick this one when agents run while you are using the machine.": "同じブラウザですが、ウィンドウを開きません。画面を奪わずに裏で作業します。自分がパソコンを使っている間にエージェントを動かすなら、こちらを。",
   "Google's own DevTools as a tool: record a performance trace, read console errors and network requests, and debug a page the way a front-end engineer does. The one to reach for when a site is broken, not just to be clicked.": "Google 純正の DevTools をそのまま道具に。パフォーマンストレースを記録し、コンソールのエラーやネットワークリクエストを読み、フロントエンドの技術者と同じやり方でページを調べます。クリックさせたいときではなく、サイトが壊れているときに使うものです。",
@@ -43,7 +42,6 @@
   "Query and inspect a Postgres database in plain language — schemas, indexes, performance analysis. Replaces the reference server npm has deprecated.": "Postgres データベースにふつうの言葉で問い合わせ、中身を調べます。スキーマ、インデックス、パフォーマンス分析。npm で非推奨になった参照実装サーバーの後継です。",
   "Query a local .db SQLite file — good for prototypes and local apps.": "手元の .db（SQLite）ファイルに問い合わせます。試作やローカルアプリ向けです。",
   "The office speaks the open MCP standard — paste any server's launch command (or a hosted https:// URL) in ⚙ → MCP SERVERS and assign it to an agent. Browse the whole ecosystem.": "このオフィスはオープンな MCP 規格に対応しています。⚙ → MCP SERVERS に任意のサーバーの起動コマンド（またはホスト版の https:// URL）を貼り、エージェントに割り当ててください。エコシステム全体を見て回れます。",
-
   "drives a browser": "ブラウザを操作",
   "stores data locally": "データを手元に保存",
   "no risk": "リスクなし",
@@ -60,7 +58,6 @@
   "hosted · sign-in": "ホスト版・要サインイン",
   "database": "データベース",
   "your call": "あなた次第",
-
   "npm i -g agent-browser && agent-browser install": "先に実行： npm i -g agent-browser && agent-browser install",
   "edit the folder path first": "先にフォルダーのパスを書き換える",
   "install the Blender add-on + uv": "Blender アドオンと uv を入れる",
@@ -80,5 +77,8 @@
   "a Slack token in the environment": "環境変数に Slack のトークン",
   "a Sentry auth token": "Sentry の認証トークン",
   "edit the connection string first": "先に接続文字列を書き換える",
-  "edit the .db file path first": "先に .db ファイルのパスを書き換える"
+  "edit the .db file path first": "先に .db ファイルのパスを書き換える",
+  "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.": "OpenAI Codex をツールとして使う: コーディング作業を第二のエージェントに渡し、プロジェクト内で作業して diff とともに報告させます。呼び出したエージェントの代わりにはなりません — ペルソナ・記憶・権限は呼び出し側に残ります。",
+  "runs a second agent": "第二のエージェントを実行",
+  "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)": "Codex CLI のインストールとログイン（npm i -g @openai/codex のあと codex login）"
 }

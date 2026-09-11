@@ -133,6 +133,19 @@ module.exports = function initChannels(ctx) {
           state.telegram = "on";
           for (const u of j.result || []) {
             offset = u.update_id + 1;
+            // A tap on an approval button arrives as a callback_query, not a message.
+            const cq = u.callback_query;
+            if (cq && cq.data && typeof ctx.onCallback === "function") {
+              if (cfg.chat && cq.message && String(cq.message.chat.id) !== String(cfg.chat)) continue;
+              ctx.onCallback("telegram", cq.data, (answer) => {
+                jreq("POST", "api.telegram.org", `/bot${cfg.token}/answerCallbackQuery`, null,
+                  { callback_query_id: cq.id, text: String(answer || "").slice(0, 200) }, () => {});
+                // and settle the card so it can't be tapped twice
+                if (cq.message) jreq("POST", "api.telegram.org", `/bot${cfg.token}/editMessageReplyMarkup`, null,
+                  { chat_id: cq.message.chat.id, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } }, () => {});
+              });
+              continue;
+            }
             const m = u.message;
             if (!m || !m.text) continue;
             // Optional allowlist: a chat id pins the office to YOUR chat.
@@ -186,16 +199,23 @@ module.exports = function initChannels(ctx) {
     r.on("error", () => cb && cb());
     r.end(body);
   }
-  function sendTelegram(token, chatId, text) {
+  // `item` (optional) is an inbox item: when it carries options, the last text
+  // part gets an inline keyboard so the owner can answer with one tap.
+  function sendTelegram(token, chatId, text, item) {
     const parts = chunk(String(text), 3900);
+    const keyboard = item && Array.isArray(item.options) && item.link && String(item.link).startsWith("approval:")
+      ? { inline_keyboard: [item.options.map((o) => ({ text: o.label || o.value,
+          callback_data: "apv:" + String(item.link).slice(9) + ":" + o.value }))] }
+      : null;
     // Any preview image the message references rides along as a real photo
     // (after the text, so the caption context arrives first).
     const photos = imagePaths(text);
     const sendPhotos = (i) => { if (i < photos.length) sendTelegramPhoto(token, chatId, photos[i], () => sendPhotos(i + 1)); };
     const sendNext = (i) => {
       if (i >= parts.length) return sendPhotos(0);
-      jreq("POST", "api.telegram.org", `/bot${token}/sendMessage`, null,
-        { chat_id: chatId, text: parts[i] }, () => sendNext(i + 1));
+      const msg = { chat_id: chatId, text: parts[i] };
+      if (keyboard && i === parts.length - 1) msg.reply_markup = keyboard;
+      jreq("POST", "api.telegram.org", `/bot${token}/sendMessage`, null, msg, () => sendNext(i + 1));
     };
     sendNext(0);
   }
@@ -396,11 +416,11 @@ module.exports = function initChannels(ctx) {
   // Push an office-originated line OUT to every connected channel that has a
   // known target — so a conversation held at the CEO seat in the app also
   // mirrors to Telegram/Discord/LINE. No-op for a channel without a target.
-  function relay(text) {
+  function relay(text, item) {
     const t = String(text);
     if (!t.trim()) return;
     const tg = (ctx.getConfig().telegram) || {};
-    if (state.telegram === "on" && tg.token && tg.chat) sendTelegram(tg.token, tg.chat, t);
+    if (state.telegram === "on" && tg.token && tg.chat) sendTelegram(tg.token, tg.chat, t, item);
     const dc = (ctx.getConfig().discord) || {};
     if (state.discord === "on" && dc.token && dc.channel) sendDiscord(dc.token, dc.channel, t);
     if (lastLine && lastLine.token) {

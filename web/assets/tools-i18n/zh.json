@@ -14,7 +14,6 @@
   "Run an installed slash command.": "运行已安装的斜杠命令。",
   "Read the output of a long-running background job.": "读取长时间后台任务的输出。",
   "Stop a background job it started.": "停止它自己启动的后台任务。",
-
   "Drive a REAL browser — open pages, click, type, fill forms and screenshot — so an agent does tasks on the web for you. Isolated profile, not logged in. Ships built-in.": "操作真实浏览器 —— 打开网页、点击、输入、填表、截图，让员工替你在网上办事。使用独立配置文件，不带登录状态。内置即可用。",
   "The same browser with no window — it works in the background instead of taking over your screen. Pick this one when agents run while you are using the machine.": "同一个浏览器，但不开窗口 —— 在后台干活，不会抢占你的屏幕。你自己在用电脑、而员工同时在跑任务时，选这个。",
   "Google's own DevTools as a tool: record a performance trace, read console errors and network requests, and debug a page the way a front-end engineer does. The one to reach for when a site is broken, not just to be clicked.": "把 Google 自家的 DevTools 变成工具：录制性能轨迹、查看控制台报错和网络请求，像前端工程师那样调试页面。网站出问题时用它，而不只是点点按钮。",
@@ -43,7 +42,6 @@
   "Query and inspect a Postgres database in plain language — schemas, indexes, performance analysis. Replaces the reference server npm has deprecated.": "用大白话查询和检视 Postgres 数据库 —— 表结构、索引、性能分析。用于替代已被 npm 弃用的官方示例服务器。",
   "Query a local .db SQLite file — good for prototypes and local apps.": "查询本机的 .db SQLite 文件 —— 适合原型和本地应用。",
   "The office speaks the open MCP standard — paste any server's launch command (or a hosted https:// URL) in ⚙ → MCP SERVERS and assign it to an agent. Browse the whole ecosystem.": "办公室支持开放的 MCP 标准 —— 在 ⚙ → MCP SERVERS 里粘贴任意服务器的启动命令（或对方托管的 https:// 网址），再分配给某位员工。整个生态都能逛。",
-
   "drives a browser": "操作浏览器",
   "stores data locally": "在本机存数据",
   "no risk": "无风险",
@@ -60,7 +58,6 @@
   "hosted · sign-in": "对方托管 · 需登录",
   "database": "数据库",
   "your call": "由你决定",
-
   "npm i -g agent-browser && agent-browser install": "先执行：npm i -g agent-browser && agent-browser install",
   "edit the folder path first": "先改掉文件夹路径",
   "install the Blender add-on + uv": "安装 Blender 插件 + uv",
@@ -80,5 +77,8 @@
   "a Slack token in the environment": "环境变量里的 Slack token",
   "a Sentry auth token": "Sentry auth token",
   "edit the connection string first": "先改掉连接字符串",
-  "edit the .db file path first": "先改掉 .db 文件路径"
+  "edit the .db file path first": "先改掉 .db 文件路径",
+  "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.": "将 OpenAI Codex 当作工具：把一项编码任务交给第二个 agent，让它在项目里完成并带着 diff 回报。它从不取代调用它的 agent——人设、记忆和权限都留在调用方。",
+  "runs a second agent": "运行第二个 agent",
+  "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)": "已安装并登录 Codex CLI（npm i -g @openai/codex，然后 codex login）"
 }

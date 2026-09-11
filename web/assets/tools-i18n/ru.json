@@ -14,7 +14,6 @@
   "Run an installed slash command.": "Выполняет установленную slash-команду.",
   "Read the output of a long-running background job.": "Читает вывод долгой фоновой задачи.",
   "Stop a background job it started.": "Останавливает фоновую задачу, которую сам же запустил.",
-
   "Drive a REAL browser — open pages, click, type, fill forms and screenshot — so an agent does tasks on the web for you. Isolated profile, not logged in. Ships built-in.": "Управляет НАСТОЯЩИМ браузером: открывает страницы, кликает, печатает, заполняет формы, делает скриншоты, — чтобы сотрудник решал ваши дела в интернете. Отдельный профиль, без входа в аккаунты. Входит в комплект.",
   "The same browser with no window — it works in the background instead of taking over your screen. Pick this one when agents run while you are using the machine.": "Тот же браузер, но без окна: работает в фоне, не занимая ваш экран. Выбирайте его, если сотрудники работают, пока вы сами за компьютером.",
   "Google's own DevTools as a tool: record a performance trace, read console errors and network requests, and debug a page the way a front-end engineer does. The one to reach for when a site is broken, not just to be clicked.": "Собственные DevTools от Google в виде инструмента: записать трассировку производительности, прочитать ошибки консоли и сетевые запросы, разобрать страницу так, как это делает фронтенд-разработчик. Берут его, когда сайт сломан, а не когда нужно просто покликать.",
@@ -43,7 +42,6 @@
   "Query and inspect a Postgres database in plain language — schemas, indexes, performance analysis. Replaces the reference server npm has deprecated.": "Запрашивать и изучать базу Postgres обычными словами: схемы, индексы, анализ производительности. Заменяет эталонный сервер, который npm объявил устаревшим.",
   "Query a local .db SQLite file — good for prototypes and local apps.": "Запросы к локальному файлу .db (SQLite) — удобно для прототипов и локальных приложений.",
   "The office speaks the open MCP standard — paste any server's launch command (or a hosted https:// URL) in ⚙ → MCP SERVERS and assign it to an agent. Browse the whole ecosystem.": "Офис понимает открытый стандарт MCP: вставьте в ⚙ → MCP SERVERS команду запуска любого сервера (или размещённый адрес https://) и назначьте её сотруднику. Доступна вся экосистема.",
-
   "drives a browser": "управляет браузером",
   "stores data locally": "хранит данные на вашем компьютере",
   "no risk": "без риска",
@@ -60,7 +58,6 @@
   "hosted · sign-in": "размещённый · нужен вход",
   "database": "база данных",
   "your call": "на ваше усмотрение",
-
   "npm i -g agent-browser && agent-browser install": "сначала установите: npm i -g agent-browser && agent-browser install",
   "edit the folder path first": "сначала поменяйте путь к папке",
   "install the Blender add-on + uv": "установить аддон Blender и uv",
@@ -80,5 +77,8 @@
   "a Slack token in the environment": "токен Slack в окружении",
   "a Sentry auth token": "токен доступа Sentry",
   "edit the connection string first": "сначала поменяйте строку подключения",
-  "edit the .db file path first": "сначала поменяйте путь к файлу .db"
+  "edit the .db file path first": "сначала поменяйте путь к файлу .db",
+  "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.": "OpenAI Codex как инструмент: передайте задачу по коду второму агенту, который работает в проекте и возвращается с diff. Он никогда не заменяет вызвавшего агента — персона, память и права остаются у вызывающего.",
+  "runs a second agent": "запускает второго агента",
+  "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)": "установленный и авторизованный Codex CLI (npm i -g @openai/codex, затем codex login)"
 }

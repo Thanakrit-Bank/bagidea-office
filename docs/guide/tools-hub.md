@@ -1,8 +1,8 @@
 # 🧰 The Tools Hub — giving agents new abilities
 
 An agent can only do what its tools let it do. The **Tools Hub** is where you
-hand it more of them: a browsable catalog of **43 entries** — the 15 abilities
-every agent already has, and **28 MCP servers** you can add with one click.
+hand it more of them: a browsable catalog of **44 entries** — the 15 abilities
+every agent already has, and **29 MCP servers** you can add with one click.
 
 Open it from the **⋯** menu → **🧰 Tools Hub**, or browse the same catalog on the
 website: **[bagidea.github.io/bagidea-office/tools.html](https://bagidea.github.io/bagidea-office/tools.html)**
@@ -19,7 +19,7 @@ website: **[bagidea.github.io/bagidea-office/tools.html](https://bagidea.github.
 | | |
 |---|---|
 | ⚡ **Built-in** (15) | Already on the machine — Read, Write, Edit, Bash, Grep, Glob, Web Search, Web Fetch, Sub-agents, Task list, Skills, Notebook Edit, Slash Commands, Background Output, Kill Shell. You don't install these; you **allow** them, per agent. |
-| 🔌 **MCP server** (28) | An outside program the office launches for the agent. Adding one from the Hub writes the launch command into the office registry; ticking it on an agent injects it into that agent's session. |
+| 🔌 **MCP server** (29) | An outside program the office launches for the agent. Adding one from the Hub writes the launch command into the office registry; ticking it on an agent injects it into that agent's session. |
 
 Adding a server to the office and **granting** it to an agent are two separate
 steps, and deliberately so — one entry in the registry can be given to the one
@@ -51,8 +51,16 @@ remembers), Filesystem, Web Fetch.
 
 **🔮 Knowledge (3)** — Exa Search, Firecrawl, Brave Search.
 
-**💼 Work & data (9)** — GitHub, Google Workspace, Notion, Linear, Slack, Sentry,
-PostgreSQL, SQLite, and **➕ Any MCP server** for anything not listed.
+**💼 Work & data (10)** — GitHub, **Codex**, Google Workspace, Notion, Linear, Slack,
+Sentry, PostgreSQL, SQLite, and **➕ Any MCP server** for anything not listed.
+
+> **🧑‍💻 Codex** *(v1.1)* — OpenAI's coding agent as a tool. Grant it to an agent and
+> that agent can hand a coding task to Codex, which works in the project and
+> reports back with a diff. It never replaces the agent that called it: persona,
+> memory, skills and permissions all stay with the caller. Needs the Codex CLI
+> installed and logged in (`npm i -g @openai/codex`, then `codex login`). A deeper
+> integration — Codex as a system tool and a workflow node, with a second-opinion
+> review mode — arrives in v1.4.
 
 ---
 
@@ -87,7 +95,7 @@ appears in a process listing.
 Every card carries a short plain-language **risk** tag, because these are not
 equal. Context7 is *reads the web*. Postgres and SQLite are *database*. The
 browser servers are *drives a browser*. GitHub is *needs a token*. It is one
-word or three, and it is there so the Hub is not 28 identical buttons.
+word or three, and it is there so the Hub is not 29 identical buttons.
 
 A **needs** line sits beside it and is the other half of the same honesty: it
 says what you must supply before the entry will work — `edit the connection

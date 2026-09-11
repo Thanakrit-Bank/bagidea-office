@@ -133,6 +133,11 @@ function help() {
   row("export [file]", "Pack agents · skills · memory · plugins → one .tgz");
   row("import <file>", "Restore an exported office here (overwrites)");
 
+  head("Inbox");
+  row("inbox", "What's waiting for you, and what's unread");
+  row("approve <n|id> [note]", "Answer an item · deny <n|id> [note] · answer <n|id> <option> [note]");
+  row("notify [test]", "Unread notifications · `notify test` sends one through your rules");
+
   head("Maintenance");
   row("doctor", "Diagnose why the office won't load (ports, proxy, firewall)");
   row("fixmic", "Reset Windows voice-typing if it's stuck");
@@ -313,6 +318,57 @@ async function main() {
     return r && r.eco
       ? ok("Eco mode ON — idle rhythms stretched, QA double-pass off (your direct orders are never slowed)")
       : ok("Eco mode OFF — full office rhythm restored");
+  }
+
+  // ---- 📥 inbox --------------------------------------------------------------
+  if (cmd === "inbox") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const j = await req("GET", "/inbox");
+    banner();
+    head(`📥 Waiting for you (${j.pending.length})`);
+    if (!j.pending.length) ok("nothing — the office isn't waiting on you");
+    j.pending.forEach((it, n) => {
+      console.log(`  ${c.accent}${n + 1}${c.reset}. ${c.bold}${it.title}${c.reset}  ${c.gray}[${it.kind}${it.agent ? " · " + it.agent : ""}]${c.reset}`);
+      if (it.detail) console.log(`     ${c.gray}${String(it.detail).split("\n")[0].slice(0, 100)}${c.reset}`);
+      console.log(`     ${c.gray}${it.options.map((o) => o.value).join(" / ")}  →  bagidea answer ${n + 1} ${it.options[0].value}${c.reset}`);
+    });
+    head(`🔔 Notifications — ${j.unread} unread`);
+    (j.recent || []).slice(0, 8).forEach((it) => console.log(`  ${it.read ? c.gray + "·" : c.warn + "•"}${c.reset} ${it.title}${c.gray}${it.body ? " — " + String(it.body).split("\n")[0].slice(0, 70) : ""}${c.reset}`));
+    console.log("");
+    return;
+  }
+  if (cmd === "approve" || cmd === "deny" || cmd === "answer") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const target = rest[0];
+    if (!target) return bad(`usage: bagidea ${cmd} <n|id> ${cmd === "answer" ? "<option> " : ""}[note]`);
+    const pend = (await req("GET", "/approvals?pending=1")).items || [];
+    const item = /^\d+$/.test(target) ? pend[Number(target) - 1] : pend.find((i) => i.id === target);
+    if (!item) return bad(`nothing pending matches "${target}" — see: bagidea inbox`);
+    let decision, note;
+    if (cmd === "answer") { decision = rest[1]; note = rest.slice(2).join(" "); }
+    else { decision = cmd === "approve" ? item.options[0].value : item.options[item.options.length - 1].value; note = rest.slice(1).join(" "); }
+    if (!item.options.some((o) => o.value === decision))
+      return bad(`"${decision}" isn't an option here — one of: ${item.options.map((o) => o.value).join(", ")}`);
+    const r = await req("POST", "/approvals/respond", { id: item.id, decision, note });
+    if (r && r.ok) ok(`${decision} → ${item.title}${note ? `  (${note})` : ""}`);
+    else bad("that item is no longer waiting");
+    return;
+  }
+  if (cmd === "notify") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    if (rest[0] === "test") {
+      const r = await req("POST", "/notify/send", { kind: "system", title: "🔔 Test notification",
+        body: "Sent from the terminal — if you can see this in the sidebar (and on your phone, if a channel is on), the rules work." });
+      ok(`sent · routed: ${Object.entries(r.routed || {}).filter(([k, v]) => v === true && k !== "quietNow" && k !== "away").map(([k]) => k).join(", ") || "centre only"}` +
+         (r.routed && r.routed.quietNow ? "  (quiet hours)" : "") + (r.routed && r.routed.away ? "  (you're marked away)" : ""));
+      return;
+    }
+    const j = await req("GET", "/notify?unread=1&limit=30");
+    head(`🔔 ${j.unread} unread`);
+    (j.items || []).forEach((it) => console.log(`  ${c.warn}•${c.reset} ${it.title}${c.gray}${it.body ? " — " + String(it.body).split("\n")[0].slice(0, 80) : ""}${c.reset}`));
+    if (!j.unread) ok("nothing unread");
+    console.log("");
+    return;
   }
 
   // Runs WITHOUT the daemon on purpose — an unreachable daemon is the thing it

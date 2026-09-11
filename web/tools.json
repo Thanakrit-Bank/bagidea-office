@@ -1,6 +1,6 @@
 {
   "_comment": "BagIdea Office — tool catalog (source of truth for BOTH the website Tools page and the in-office 🧰 Tools Hub, which fetches this file live). kind: 'builtin' ships with every agent; kind: 'mcp' is an MCP server the owner adds. 'cmd' is either a program to launch or a hosted https:// URL. Check a command against npm/PyPI before adding one — a dead package behind a one-click button is worse than no entry. To add: open a PR.",
-  "updated": "2026-09-01",
+  "updated": "2026-09-11",
   "tools": [
     {
       "id": "read",
@@ -555,6 +555,25 @@
         "risk": "ต้องมี token",
         "desc": "อ่านและจัดการ repo, issue, PR, Actions และโค้ด — เซิร์ฟเวอร์ของ GitHub เอง token อ่านจาก environment เลยไม่ถูกเขียนลง registry ของออฟฟิศ ถ้าไม่อยากใช้ Docker วาง https://api.githubcopilot.com/mcp/ แทนได้ ซึ่งล็อกอินแบบ OAuth",
         "needs": "Docker + GITHUB_PERSONAL_ACCESS_TOKEN ใน environment"
+      }
+    },
+    {
+      "id": "codex",
+      "kind": "mcp",
+      "group": "work",
+      "icon": "🧑‍💻",
+      "name": "Codex",
+      "cmd": "codex mcp-server",
+      "repo": "https://github.com/openai/codex",
+      "en": {
+        "desc": "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.",
+        "risk": "runs a second agent",
+        "needs": "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)"
+      },
+      "th": {
+        "desc": "ใช้ OpenAI Codex เป็นเครื่องมือ: ส่งงานเขียนโค้ดให้ agent ตัวที่สองไปทำในโปรเจกต์แล้วรายงานกลับพร้อม diff — ไม่ได้มาแทน agent ที่เรียก persona ความจำ และสิทธิ์ยังอยู่กับผู้เรียก",
+        "risk": "รัน agent ตัวที่สอง",
+        "needs": "ติดตั้ง Codex CLI และล็อกอินแล้ว (npm i -g @openai/codex แล้ว codex login)"
       }
     },
     {

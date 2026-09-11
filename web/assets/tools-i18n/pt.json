@@ -14,7 +14,6 @@
   "Run an installed slash command.": "Executa um comando de barra já instalado.",
   "Read the output of a long-running background job.": "Lê a saída de uma tarefa em segundo plano que demora.",
   "Stop a background job it started.": "Interrompe uma tarefa em segundo plano que ele mesmo iniciou.",
-
   "Drive a REAL browser — open pages, click, type, fill forms and screenshot — so an agent does tasks on the web for you. Isolated profile, not logged in. Ships built-in.": "Controla um navegador DE VERDADE: abre páginas, clica, digita, preenche formulários e tira prints, para que um agente resolva coisas na web por você. Perfil isolado, sem login. Já vem incluído.",
   "The same browser with no window — it works in the background instead of taking over your screen. Pick this one when agents run while you are using the machine.": "O mesmo navegador, sem janela: trabalha em segundo plano em vez de tomar conta da sua tela. Escolha este quando os agentes rodam enquanto você usa o computador.",
   "Google's own DevTools as a tool: record a performance trace, read console errors and network requests, and debug a page the way a front-end engineer does. The one to reach for when a site is broken, not just to be clicked.": "As DevTools do próprio Google como ferramenta: gravar um trace de desempenho, ler erros de console e requisições de rede, e depurar uma página como faz quem trabalha com front-end. É a que se usa quando o site está quebrado, não apenas quando é para clicar.",
@@ -43,7 +42,6 @@
   "Query and inspect a Postgres database in plain language — schemas, indexes, performance analysis. Replaces the reference server npm has deprecated.": "Consulta e inspeciona um banco Postgres em linguagem comum: esquemas, índices, análise de desempenho. Substitui o servidor de referência que o npm descontinuou.",
   "Query a local .db SQLite file — good for prototypes and local apps.": "Consulta um arquivo .db do SQLite local — bom para protótipos e apps locais.",
   "The office speaks the open MCP standard — paste any server's launch command (or a hosted https:// URL) in ⚙ → MCP SERVERS and assign it to an agent. Browse the whole ecosystem.": "O escritório fala o padrão aberto MCP: cole em ⚙ → MCP SERVERS o comando de inicialização de qualquer servidor (ou uma URL https:// hospedada) e atribua a um agente. Dá para explorar o ecossistema inteiro.",
-
   "drives a browser": "controla um navegador",
   "stores data locally": "guarda dados no seu computador",
   "no risk": "sem risco",
@@ -60,7 +58,6 @@
   "hosted · sign-in": "hospedado · exige login",
   "database": "banco de dados",
   "your call": "você decide",
-
   "npm i -g agent-browser && agent-browser install": "instale antes: npm i -g agent-browser && agent-browser install",
   "edit the folder path first": "troque antes o caminho da pasta",
   "install the Blender add-on + uv": "instalar o add-on do Blender + uv",
@@ -80,5 +77,8 @@
   "a Slack token in the environment": "um token do Slack no ambiente",
   "a Sentry auth token": "um token de autenticação do Sentry",
   "edit the connection string first": "troque antes a string de conexão",
-  "edit the .db file path first": "troque antes o caminho do arquivo .db"
+  "edit the .db file path first": "troque antes o caminho do arquivo .db",
+  "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.": "OpenAI Codex como ferramenta: entregue uma tarefa de código a um segundo agente que trabalha no projeto e volta com um diff. Nunca substitui o agente que o chamou — persona, memória e permissões ficam com quem chamou.",
+  "runs a second agent": "executa um segundo agente",
+  "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)": "o CLI do Codex instalado e autenticado (npm i -g @openai/codex, depois codex login)"
 }

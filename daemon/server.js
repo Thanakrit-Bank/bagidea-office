@@ -1557,9 +1557,11 @@ function askTrust(dir, fp, ctx) {
   broadcast({ type: "trust.requested", trust: rec.id, dir, project: rec.project,
     changed: known, agent: (ctx && ctx.agent) || undefined,
     hooks: fp.hooks, scripts: fp.scripts.map((s) => ({ rel: s.rel, outside: s.outside })) });
-  notifyChannels((known ? "🛡 โปรเจค “" + rec.project + "” เปลี่ยน hook ของตัวเอง"
-    : "🛡 โปรเจค “" + rec.project + "” มี hook ของตัวเองที่จะรันอัตโนมัติ") +
-    " — งานหยุดรอคุณอนุมัติในออฟฟิศก่อน");
+  approvals.ask({ kind: "project-trust", ref: rec.id, agent: (ctx && ctx.agent) || "",
+    title: (known ? `Project “${rec.project}” changed its own hooks` : `Project “${rec.project}” ships its own hooks`),
+    detail: "Commands that would run the moment a session opens there:" + N_LITERAL +
+      fp.hooks.map((h) => "  " + h).join(N_LITERAL) + N_LITERAL + "Work in that project is parked until you answer.",
+    meta: { dir, project: rec.project } });
   console.log("[proj] trust HELD", key, fp.hooks.length, "hook(s)");
   return rec;
 }
@@ -1573,6 +1575,7 @@ function resolveTrust(id, allow) {
   if (key === null) return false;
   const rec = pendingTrust.get(key);
   pendingTrust.delete(key);
+  { const ap = approvals.byRef("project-trust", id); if (ap) approvals.respond(ap.id, allow ? "allow" : "deny", { by: "ui" }); }
   if (allow) {
     reg.projectTrust = reg.projectTrust || {};
     reg.projectTrust[key] = rec.hash;
@@ -2831,7 +2834,11 @@ function autoContinue(agent, project, keyRef, next, isDirector, dele) {
       autoRounds.delete(key);
       // A real block is the one thing worth interrupting the owner for — send it
       // to wherever they actually are (Telegram/Discord/…), not just the chat.
-      if (kind === "BLOCKED" && st && st.note) notifyChannels("⛔ ต้องการเจ้าของ: " + st.note);
+      if (kind === "BLOCKED" && st && st.note) {
+        const an = (reg.agents[agent] || {}).name || agent;
+        approvals.ask({ kind: "blocked", agent, title: `${an} is blocked`, detail: st.note,
+          meta: { key, project, isDirector: !!isDirector } });
+      }
       return;
     }
     const n = (autoRounds.get(key) || 0) + 1;
@@ -3670,9 +3677,11 @@ function channelCommand(text) {
       "/agents — รายชื่อทีม",
       "/projects — โปรเจค",
       "/who — ใครกำลังทำงานอยู่",
+      "/inbox — สิ่งที่รอคุณตัดสินใจ (ตอบ \"1 yes\" หรือ \"2 no เหตุผล\")",
       "",
       "พิมพ์ข้อความปกติ = สั่งงาน Director ได้เลย 👑",
     ].join("\n");
+  if (cmd === "inbox" || cmd === "pending") return approvals.summary();
   if (cmd === "agents" || cmd === "team") {
     const list = Object.keys(reg.agents)
       .filter((id) => id !== "ceo")
@@ -3707,9 +3716,25 @@ const channels = require("./channels")({
   getConfig: () => reg.channels || {},
   uploadsDir: path.join(WORKSPACE, "uploads"),   // resolve "/uploads/…" for Telegram photo upload
   log: (s) => console.log(s),
+  // A button pressed under an approval card (Telegram inline keyboard).
+  onCallback(channel, data, answer) {
+    const m = /^apv:([^:]+):([a-z]+)$/.exec(String(data || ""));
+    if (!m) return answer("?");
+    approvals.respond(m[1], m[2], { by: channel + ":button" })
+      .then((ok) => answer(ok ? "✓ " + m[2] : "already decided"));
+  },
   onMessage(channel, from, text, reply, typing) {
     broadcast({ type: "channel.message", channel, from,
       text: String(text).slice(0, 500) });
+    // A reply to something waiting in the inbox ("1 yes", "/deny 2 too risky",
+    // or a bare "yes" when exactly one thing is pending) is answered here and
+    // never reaches the Director as an order.
+    const ap = approvals.parseReply(String(text));
+    if (ap) {
+      approvals.respond(ap.id, ap.decision, { by: channel + ":" + from, note: ap.note })
+        .then((ok) => { try { reply(ok ? `✓ ${ap.decision}` + (ap.note ? ` — “${ap.note}”` : "") : "That item is no longer waiting."); } catch {} });
+      return;
+    }
     // Slash command? answer instantly, no Director turn (#123).
     const cmd = channelCommand(String(text).trim());
     if (cmd !== null) { try { reply(cmd); } catch (e) { console.error("[chan cmd]", e.message); } return; }
@@ -3742,14 +3767,83 @@ const channels = require("./channels")({
 });
 channels.restart();
 
-// Work milestones → every connected channel (Telegram/Discord/…): delegation,
-// finished-work reports, new pitches — so long-running work is followable from
-// the phone. Hoisted function so earlier-in-file call sites can use it.
-// reg.channelNotify=false mutes (default on).
-function notifyChannels(text) {
-  if (reg.channelNotify === false || !text) return;
-  try { channels.relay(String(text)); } catch (e) { console.error("[chan] notify", e && e.message); }
+// ---------------------------------------------------------------- inbox
+// 🔔 Notifications with rules (daemon/notify.js) and 📥 one approvals queue for
+// everything that waits on a person (daemon/approvals.js). Both are indexes and
+// plumbing; each kind's real resolver stays where it always was.
+const notify = require("./notify")({
+  file: path.join(__dirname, "notifications.json"),
+  reg, saveReg, broadcast,
+  relay: (text, item) => channels.relay(text, item),
+  log: (s) => console.log(s),
+});
+const approvals = require("./approvals")({
+  file: path.join(__dirname, "approvals.json"),
+  broadcast, notify: (spec) => notify.send(spec),
+  log: (s) => console.log(s),
+});
+
+// Work milestones → wherever the owner is, through the notification rules.
+// Hoisted function so earlier-in-file call sites can use it. `kind` picks the
+// rule; reg.channelNotify=false still mutes the channel leg (default on).
+function notifyChannels(text, kind) {
+  if (!text) return;
+  const t = String(text);
+  const nlAt = t.indexOf(N_LITERAL);
+  notify.send({ kind: kind || "done", title: (nlAt > 0 ? t.slice(0, nlAt) : t).slice(0, 160),
+    body: nlAt > 0 ? t.slice(nlAt + 1) : "", channelText: t });
 }
+const N_LITERAL = String.fromCharCode(10);
+
+// How each approval kind is actually carried out once a person decides — from
+// the panel, the CLI, or a reply typed on a phone. Every handler is idempotent:
+// a decision that arrives twice (the UI and the phone) does the work once.
+approvals.on("tool-permission", (item, d) => {
+  if (d === "expired") return finishPerm(item.ref, "deny", "timeout");
+  if (d === "always") {
+    const pend = pendingPerms.get(item.ref);
+    if (pend) {
+      const base = String(pend.agent).split("#")[0];
+      reg.autoAllow = reg.autoAllow || {};
+      reg.autoAllow[base] = [...new Set([...(reg.autoAllow[base] || []), pend.tool])];
+      const a = reg.agents[base];
+      if (a && Array.isArray(a.tools) && !a.tools.includes(pend.tool)) a.tools.push(pend.tool);
+      saveReg(); pushRoster();
+    }
+  }
+  finishPerm(item.ref, d === "deny" ? "deny" : "allow", "owner");
+});
+approvals.on("project-trust", (item, d) => { resolveTrust(item.ref, d === "allow"); });
+approvals.on("proposal", (item, d) => {
+  const p = proposals.find((x) => x.id === item.ref);
+  if (p && p.status === "pending" && d !== "expired") decideProposal(p, d, item.note);
+});
+approvals.on("job", (item, d) => {
+  const job = jobs.find((j) => j.id === item.ref);
+  if (!job) return;
+  if (d === "delete") { jobs = jobs.filter((j) => j.id !== item.ref); saveJobs(); broadcast({ type: "jobs.changed" }, false); return; }
+  if (d === "enable" && !job.enabled) {
+    job.enabled = true; saveJobs(); broadcast({ type: "jobs.changed" }, false);
+    if (job.mode === "now") dispatchJob(job);
+  }
+});
+approvals.on("blocked", (item, d) => {
+  if (d !== "continue") return;
+  const m = item.meta || {};
+  const an = (reg.agents[item.agent] || {}).name || item.agent;
+  broadcast({ type: "chat.message", agent: item.agent, session: m.key,
+    text: `▶ ${an}: owner answered — continuing` + (item.note ? ` (“${item.note}”)` : "") });
+  const keyRef = { key: m.key || "" };
+  const df = m.isDirector ? makeDelegateFilter(0, m.key) : null;
+  runClaude(item.agent,
+    `The owner has answered your STATUS: BLOCKED` +
+    (item.note ? `: "${item.note}"` : ` — go ahead and decide it yourself`) +
+    `.` + N_LITERAL + `Carry on with the work from where you stopped.` + autoNote(),
+    { session: m.key || undefined, logPrompt: "▶ continue — owner answered",
+      filterText: df ? (t) => stripStatus(df(t)) : (t) => stripStatus(t),
+      onEntry: (k) => { keyRef.key = k; },
+      onDone: autoContinue(item.agent, m.project, keyRef, undefined, !!m.isDirector) });
+});
 
 // ---------------------------------------------------------------- plugins
 const plugins = require("./plugins")({
@@ -3880,6 +3974,49 @@ function ambientTick(now) {
 // pitch per `proposalMin` minutes (configurable; 0 = unlimited). Agents still
 // discuss freely — only the pitches that REACH the owner are throttled.
 let lastProposalAt = 0;
+// The CEO's verdict on a team pitch — from the panel, the chat card, the CLI or
+// a reply on the phone. Approve → a real project is born and the Director
+// staffs it; reject/hold are remembered. One function so every path agrees.
+function decideProposal(p, decision, message) {
+  p.status = decision === "approve" ? "approved"
+    : decision === "reject" ? "rejected" : "pending";
+  const note = String(message || "").slice(0, 600).trim();   // owner's optional note
+  if (note) p.message = note;
+  saveProposals();
+  const noteLine = note ? `เจ้าของฝากข้อความ: "${note}"\n` : "";
+  if (decision === "approve") {
+    let proj = null;
+    // Approved projects are born in a DEFAULT projects folder (the
+    // playground) when no location was given — agents never scaffold loose.
+    const playDir = String(reg.playground || path.join(WORKSPACE, "projects"));
+    try {
+      proj = createProject(p.name, "", path.join(playDir, p.name.replace(/[^\wก-๙ -]/g, "_")));
+    } catch (e) { /* duplicate name → Director routes to the existing one */ }
+    queueDirectorTurn((release) => {
+      runClaude("main",
+        `CEO อนุมัติข้อเสนอโปรเจคของทีมแล้ว 🎉\n` +
+        `ชื่อ: ${p.name}\nไอเดีย: ${p.detail}\nผู้เสนอ: ${p.agents.join(", ")}\n` + noteLine +
+        (proj ? `โปรเจคถูกสร้างไว้แล้วที่ ${proj.dir} (ทำงานในโฟลเดอร์นี้เท่านั้น)\n` : "") +
+        `กติกา: ห้ามแก้ไขระบบหลักของโปรแกรม (daemon/godot/shell/cli) เด็ดขาด — ` +
+        `ถ้าเป็นการต่อยอดออฟฟิศ ให้ทำเป็น plugin ตาม docs/guide/plugins.md ` +
+        `(เริ่มจาก template: github.com/bagidea/bagidea-office-template).\n` +
+        `จัดทีมเลย: DELEGATE: <agent> @ ${p.name} :: <งานชิ้นแรกที่ชัดเจน> ` +
+        `ให้คนที่เสนอไอเดียได้ทำเป็นหลัก แล้วสรุปแผนสั้นๆ` +
+        (note ? ` และนำข้อความของเจ้าของไปปรับทิศทางงานด้วย` : ""),
+        { logPrompt: `✅ อนุมัติข้อเสนอ: ${p.name}`,
+          filterText: makeDelegateFilter(0, undefined),
+          onDone: () => release() });
+    });
+  } else if (decision === "reject" && note) {
+    // The team hears WHY — the owner's note lands in the office feed.
+    broadcast({ type: "chat.message", agent: "main",
+      text: `CEO ยังไม่อนุมัติ "${p.name}" — ${note}` });
+  }
+  broadcast({ type: "proposal." + p.status, agent: p.by, name: p.name, proposal: p.id });
+  { const ap = approvals.byRef("proposal", p.id);
+    if (ap && p.status !== "pending") approvals.respond(ap.id, p.status === "approved" ? "approve" : "reject", { by: "ui", note: message }); }
+}
+
 function addProposal(by, agents, name, detail) {
   const gap = ecoFloor(Number(reg.proposalMin !== undefined ? reg.proposalMin : 120), 360);
   if (gap && Date.now() - lastProposalAt < gap * 60000) return null;  // too soon
@@ -3889,7 +4026,8 @@ function addProposal(by, agents, name, detail) {
   proposals.push(p);
   saveProposals();
   broadcast({ type: "proposal.created", agent: by, name: p.name, proposal: p.id });
-  notifyChannels(`💡 ${(reg.agents[by] && reg.agents[by].name) || by} pitched: ${p.name} — decide in the app or "bagidea proposals"`);
+  approvals.ask({ kind: "proposal", ref: p.id, agent: by, title: `Pitch: ${p.name}`,
+    detail: p.detail + N_LITERAL + "— " + agents.map((id) => (reg.agents[id] && reg.agents[id].name) || id).join(", ") });
   return p;
 }
 
@@ -5261,6 +5399,9 @@ end tell`;
         };
         jobs.push(job);
         saveJobs();
+        if (!job.enabled) approvals.ask({ kind: "job", ref: job.id, agent: job.agent,
+          title: `Job for ${(reg.agents[job.agent] || {}).name || job.agent}: ${job.prompt.slice(0, 80)}`,
+          detail: job.prompt });
         // ...and don't fire a "now" job that was created disabled. dispatchJob()
         // itself never consults .enabled — only the scheduler's jobDue() does,
         // and that never looks at mode:"now" — so this is the only gate there is.
@@ -5276,6 +5417,8 @@ end tell`;
         const p = JSON.parse(body);
         const job = jobs.find((j) => j.id === p.id);
         if (!job) { res.writeHead(404); return res.end("unknown job"); }
+        { const ap = approvals.byRef("job", p.id);
+          if (ap && (p.remove || p.enabled === true)) approvals.respond(ap.id, p.remove ? "delete" : "enable", { by: "ui" }); }
         if (p.remove) {
           jobs = jobs.filter((j) => j.id !== p.id);
         } else {
@@ -6576,6 +6719,79 @@ end tell`;
       }
     });
 
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/approvals") {
+    const q = req.url.split("?")[1] || "";
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ items: approvals.list({ pending: /pending=1/.test(q) }), pending: approvals.pendingCount() }));
+
+  } else if (req.method === "POST" && req.url === "/approvals") {
+    // Ask the owner something — plugins and scripts. Resolves when they answer.
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body || "{}");
+        if (!p.title) throw new Error("no title");
+        const { id, item } = approvals.ask({ kind: "plugin", ...p, id: undefined });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ id, item }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/approvals/respond") {
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        const { id, decision, note } = JSON.parse(body || "{}");
+        approvals.respond(String(id), String(decision), { by: "ui", note }).then((ok) => {
+          res.writeHead(ok ? 200 : 404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ ok }));
+        });
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/notify") {
+    const q = new URLSearchParams(req.url.split("?")[1] || "");
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ items: notify.list({ unread: q.get("unread") === "1", limit: q.get("limit") }),
+      unread: notify.unreadCount(), rules: notify.rules(), quiet: notify.quiet() }));
+
+  } else if (req.method === "POST" && req.url === "/notify/read") {
+    readBody(req, (body) => {
+      let ids = "all"; try { ids = JSON.parse(body || "{}").ids || "all"; } catch {}
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ unread: notify.markRead(ids) }));
+    });
+
+  } else if (req.method === "POST" && req.url === "/notify/rules") {
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        notify.setRules(JSON.parse(body || "{}"));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ rules: notify.rules(), quiet: notify.quiet() }));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/notify/presence") {
+    // The overlay pings while the owner is at the keyboard; silence means away.
+    readBody(req, () => { notify.presence(true); res.writeHead(200); res.end("ok"); });
+
+  } else if (req.method === "POST" && req.url === "/notify/send") {
+    // Plugins, scripts and `bagidea notify` — routed by the rules like anything else.
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body || "{}");
+        if (!p.title) throw new Error("no title");
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(notify.send(p)));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url === "/inbox") {
+    // One call for the CLI and the phone: what waits, and what's unread.
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ pending: approvals.list({ pending: true }), unread: notify.unreadCount(),
+      recent: notify.list({ limit: 20 }) }));
+
   } else if (req.method === "POST" && req.url === "/perm/request") {
     // PreToolUse hook long-polls here; we answer when the user decides.
     readBody(req, (body) => {
@@ -6617,6 +6833,9 @@ end tell`;
         finishPerm(id, "deny", "timeout");
       }, 50000);
       pendingPerms.set(id, { res, timer, agent, task, tool });
+      approvals.ask({ kind: "tool-permission", ref: id, agent,
+        title: `${(reg.agents[String(agent).split("#")[0]] || {}).name || agent} wants to use ${tool}`,
+        detail: String(input || "").slice(0, 1500), expiresMs: 50000, meta: { task } });
     });
 
   } else if (req.method === "POST" && req.url === "/project/trust") {
@@ -6800,41 +7019,7 @@ end tell`;
         const { id, decision, message } = JSON.parse(body);
         const p = proposals.find((x) => x.id === id);
         if (!p) { res.writeHead(404); return res.end("unknown proposal"); }
-        p.status = decision === "approve" ? "approved"
-          : decision === "reject" ? "rejected" : "pending";
-        const note = String(message || "").slice(0, 600).trim();   // owner's optional note
-        if (note) p.message = note;
-        saveProposals();
-        const noteLine = note ? `เจ้าของฝากข้อความ: "${note}"\n` : "";
-        if (decision === "approve") {
-          let proj = null;
-          // Approved projects are born in a DEFAULT projects folder (the
-          // playground) when no location was given — agents never scaffold loose.
-          const playDir = String(reg.playground || path.join(WORKSPACE, "projects"));
-          try {
-            proj = createProject(p.name, "", path.join(playDir, p.name.replace(/[^\wก-๙ -]/g, "_")));
-          } catch (e) { /* duplicate name → Director routes to the existing one */ }
-          queueDirectorTurn((release) => {
-            runClaude("main",
-              `CEO อนุมัติข้อเสนอโปรเจคของทีมแล้ว 🎉\n` +
-              `ชื่อ: ${p.name}\nไอเดีย: ${p.detail}\nผู้เสนอ: ${p.agents.join(", ")}\n` + noteLine +
-              (proj ? `โปรเจคถูกสร้างไว้แล้วที่ ${proj.dir} (ทำงานในโฟลเดอร์นี้เท่านั้น)\n` : "") +
-              `กติกา: ห้ามแก้ไขระบบหลักของโปรแกรม (daemon/godot/shell/cli) เด็ดขาด — ` +
-              `ถ้าเป็นการต่อยอดออฟฟิศ ให้ทำเป็น plugin ตาม docs/guide/plugins.md ` +
-              `(เริ่มจาก template: github.com/bagidea/bagidea-office-template).\n` +
-              `จัดทีมเลย: DELEGATE: <agent> @ ${p.name} :: <งานชิ้นแรกที่ชัดเจน> ` +
-              `ให้คนที่เสนอไอเดียได้ทำเป็นหลัก แล้วสรุปแผนสั้นๆ` +
-              (note ? ` และนำข้อความของเจ้าของไปปรับทิศทางงานด้วย` : ""),
-              { logPrompt: `✅ อนุมัติข้อเสนอ: ${p.name}`,
-                filterText: makeDelegateFilter(0, undefined),
-                onDone: () => release() });
-          });
-        } else if (decision === "reject" && note) {
-          // The team hears WHY — the owner's note lands in the office feed.
-          broadcast({ type: "chat.message", agent: "main",
-            text: `CEO ยังไม่อนุมัติ "${p.name}" — ${note}` });
-        }
-        broadcast({ type: "proposal." + p.status, agent: p.by, name: p.name, proposal: p.id });
+        decideProposal(p, decision, message);
         res.writeHead(200); res.end("ok");
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
@@ -7110,6 +7295,10 @@ function finishPerm(id, decision, why) {
     type: decision === "allow" ? "perm.approved" : "perm.denied",
     agent: p.agent, task: p.task, tool: p.tool, perm: id, via: why,
   });
+  // Whichever way it was decided (panel, chat card, timeout), the inbox record
+  // closes with it — so the phone never shows a card the office already settled.
+  const ap = approvals.byRef("tool-permission", id);
+  if (ap) approvals.respond(ap.id, decision, { by: why });
   return true;
 }
 

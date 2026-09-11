@@ -14,7 +14,6 @@
   "Run an installed slash command.": "Menjalankan perintah garis miring yang sudah terpasang.",
   "Read the output of a long-running background job.": "Membaca keluaran tugas latar yang berjalan lama.",
   "Stop a background job it started.": "Menghentikan tugas latar yang ia mulai sendiri.",
-
   "Drive a REAL browser — open pages, click, type, fill forms and screenshot — so an agent does tasks on the web for you. Isolated profile, not logged in. Ships built-in.": "Mengemudikan peramban SUNGGUHAN: membuka halaman, mengeklik, mengetik, mengisi formulir, dan menangkap layar, supaya agen mengurus keperluan Anda di web. Profil terpisah, tidak dalam keadaan masuk akun. Sudah tersedia sejak awal.",
   "The same browser with no window — it works in the background instead of taking over your screen. Pick this one when agents run while you are using the machine.": "Peramban yang sama tanpa jendela: bekerja di latar belakang alih-alih mengambil alih layar Anda. Pilih ini kalau agen bekerja sementara Anda sendiri sedang memakai komputernya.",
   "Google's own DevTools as a tool: record a performance trace, read console errors and network requests, and debug a page the way a front-end engineer does. The one to reach for when a site is broken, not just to be clicked.": "DevTools milik Google sendiri, dijadikan alat: merekam jejak performa, membaca galat konsol dan permintaan jaringan, lalu membedah halaman seperti yang dilakukan insinyur front-end. Ini yang dipakai saat sebuah situs rusak, bukan sekadar saat perlu diklik.",
@@ -43,7 +42,6 @@
   "Query and inspect a Postgres database in plain language — schemas, indexes, performance analysis. Replaces the reference server npm has deprecated.": "Menanyai dan memeriksa basis data Postgres dengan bahasa biasa: skema, indeks, analisis performa. Menggantikan server rujukan yang sudah tidak lagi didukung di npm.",
   "Query a local .db SQLite file — good for prototypes and local apps.": "Menanyai berkas .db SQLite di komputer sendiri — cocok untuk purwarupa dan aplikasi lokal.",
   "The office speaks the open MCP standard — paste any server's launch command (or a hosted https:// URL) in ⚙ → MCP SERVERS and assign it to an agent. Browse the whole ecosystem.": "Kantor ini berbicara dengan standar terbuka MCP — tempelkan perintah menjalankan server mana pun (atau alamat https:// yang terkelola) di ⚙ → MCP SERVERS, lalu tugaskan ke seorang agen. Seluruh ekosistemnya terbuka untuk dijelajahi.",
-
   "drives a browser": "mengemudikan peramban",
   "stores data locally": "menyimpan data di komputer Anda",
   "no risk": "tanpa risiko",
@@ -60,7 +58,6 @@
   "hosted · sign-in": "terkelola · harus masuk",
   "database": "basis data",
   "your call": "terserah Anda",
-
   "npm i -g agent-browser && agent-browser install": "pasang dulu: npm i -g agent-browser && agent-browser install",
   "edit the folder path first": "ubah dulu jalur foldernya",
   "install the Blender add-on + uv": "pasang add-on Blender + uv",
@@ -80,5 +77,8 @@
   "a Slack token in the environment": "token Slack di lingkungan",
   "a Sentry auth token": "token autentikasi Sentry",
   "edit the connection string first": "ubah dulu string koneksinya",
-  "edit the .db file path first": "ubah dulu jalur berkas .db"
+  "edit the .db file path first": "ubah dulu jalur berkas .db",
+  "OpenAI Codex as a tool: hand a coding task to a second agent that works in the project and reports back with a diff. It never replaces the agent that called it — persona, memory and permissions stay with the caller.": "OpenAI Codex sebagai alat: serahkan tugas pemrograman ke agent kedua yang bekerja di dalam proyek dan kembali membawa diff. Ia tidak pernah menggantikan agent yang memanggilnya — persona, memori, dan izin tetap pada pemanggil.",
+  "runs a second agent": "menjalankan agent kedua",
+  "the Codex CLI installed and logged in (npm i -g @openai/codex, then codex login)": "Codex CLI terpasang dan sudah login (npm i -g @openai/codex, lalu codex login)"
 }
