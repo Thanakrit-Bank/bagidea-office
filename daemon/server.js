@@ -2380,6 +2380,10 @@ function runClaude(agent, prompt, opts = {}) {
       killTree(child);   // issue #15 review: shell:true on win32 → must taskkill /T, not plain kill
       // Already-cleared (doneFired) runs are skipped by fireDone's guard.
       ended = true;
+      // Issue #52: the broadcast reaches only a live viewer. The persistent history
+      // (GET /sessions/log) must say WHY the run stopped, or a later reader sees a
+      // trail that just ends after the last tool call.
+      abnormalEnd(`the watchdog stopped this run (${reason}) — work up to this point may or may not have landed; check the working tree`);
       broadcast({ type: "task.failed", agent, task, session: entry.key,
         reason: `watchdog: ${reason}` });
       fireDone(`(watchdog: ${reason})`, false);
@@ -2481,6 +2485,18 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
     if (!pa[agent]) delete pa[agent];
     broadcast({ type: "projects.changed" }, false);
   };
+  // Issue #52: one visible line in the session history for every abnormal end —
+  // a watchdog kill, an adapter error, a dead key, a run that ended with no result.
+  // Written once per run, persisted at once, and never for a normal finish.
+  let abnormalNoted = false;
+  const abnormalEnd = (why) => {
+    if (abnormalNoted) return;
+    abnormalNoted = true;
+    try {
+      entry.log.push({ who: "agent", text: "⚠ Run ended abnormally — " + String(why).slice(0, 600), ts: Date.now(), abnormal: true });
+      saveSess();
+    } catch (e) { console.error("[claude] history:", e && e.message); }
+  };
   const fireDone = (text, ok) => {
     if (doneFired) return;
     doneFired = true;
@@ -2489,6 +2505,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
     // own terminal event, so they never double-fire here.)
     if (!ended) {
       ended = true;
+      if (!ok) abnormalEnd("the run ended without a result" + (errText.trim() ? " — last stderr: " + errText.trim().split("\n").slice(-2).join(" ").slice(0, 300) : ""));
       broadcast({ type: ok ? "task.completed" : "task.failed", agent, task,
         session: entry.key, reason: "ended without a result" });
     }
@@ -2587,6 +2604,8 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
               : st === 403 ? "ไม่ได้รับอนุญาต (403)"
               : "endpoint ไม่ตอบ (น่าจะ down หรือไม่น่าจะกลับมา)";
             const an = (reg.agents[agent] || {}).name || agent;
+            const whyEn = st === 401 ? "the API key is wrong or expired (401)" : st === 403 ? "the key is not permitted (403)" : "the endpoint is not responding";
+            abnormalEnd(`the brain ${mtag} could not answer — ${whyEn}; the run was stopped instead of retrying blind`);
             broadcast({ type: "chat.message", agent, task, session: entry.key, model: mtag,
               text: `⚠️ สมองของ ${an} (${mtag}) ใช้งานไม่ได้ — ${why}.\n` +
                 `ตรวจ key/ตั้งค่าใน 🧠 BRAIN ของคุณคนนี้ (หรือเปลี่ยนสมอง) แล้วสั่งใหม่ — ไม่ต้องรอ retry ครบ 10 รอบ` });
@@ -2724,6 +2743,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
   });
   child.on("error", (e) => {
     ended = true;
+    abnormalEnd("adapter error: " + e.message);
     broadcast({ type: "task.failed", agent, task });
     broadcast({ type: "chat.message", agent, task, text: "adapter error: " + e.message });
     fireDone("", false);
