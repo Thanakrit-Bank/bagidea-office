@@ -266,7 +266,7 @@ test("triggers: a file landing in a watched folder fires once, after the write s
 
 // ── wiring ───────────────────────────────────────────────────────────────────
 test("wiring: the daemon runs the engine, hooks every trigger kind, and keeps the legacy path", () => {
-  for (const s of ['require("./workflows")', 'require("./triggers")', "onBroadcastHook = (evt) => triggers.onEvent(evt)",
+  for (const s of ['require("./workflows")', 'require("./triggers")', "triggers.onEvent(evt);",
                    "triggers.tick(now)", "triggers.onChannel(channel, from, String(text))", 'approvals.on("workflow"',
                    "workflows.resumeAll()", "triggers.startAll()", 'req.url.startsWith("/hook/")', 'req.url.startsWith("/workflows/runs")',
                    'req.url === "/workflows/cancel"', 'req.url === "/triggers"', "function runWorkflowViaDirector("])

@@ -779,6 +779,16 @@
   /* Edge's native password-reveal eye is black-on-black on our theme. */
   input::-ms-reveal { filter: invert(0.85); }
   .tabs .tab.on { color: var(--accent); border-color: var(--accent); background: rgba(94,200,255,0.1); }
+  /* 📋 the task board (v1.4) */
+  .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .bcol { background: rgba(255,255,255,.04); border-radius: 8px; padding: 6px; min-height: 90px; min-width: 0; }
+  .bcol h5 { margin: 0 0 6px; font-size: 10.5px; color: var(--dim); letter-spacing: .4px; font-weight: 600; }
+  .card { background: rgba(0,0,0,.28); border-radius: 7px; padding: 6px 7px; margin-bottom: 5px; font-size: 11.5px; cursor: grab; border-left: 3px solid transparent; word-break: break-word; }
+  .card:hover { background: rgba(0,0,0,.4); }
+  .card.p1 { border-left-color: #ff6b6b; } .card.p2 { border-left-color: #ffcf5e; } .card.p4 { opacity: .75; }
+  .card .m { font-size: 10px; color: var(--dim); margin-top: 3px; }
+  .card.over .m { color: #ff8a8a; } .card.blocked { opacity: .6; }
+  .bcol.drop { outline: 1px dashed #6fd3ff; }
   .arow {
     display: flex; gap: 10px; align-items: center; padding: 7px 9px;
     border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; margin-bottom: 7px;
@@ -1245,6 +1255,7 @@
     // ops tabs
     "📁 PROJECTS": { en: "📁 PROJECTS", zh: "📁 项目", ja: "📁 プロジェクト" },
     "📋 TASKS": { en: "📋 TASKS", zh: "📋 任务", ja: "📋 タスク" },
+    "🔁 JOBS": { en: "🔁 JOBS", zh: "🔁 定时任务", ja: "🔁 ジョブ" },
     "📅 CALENDAR": { en: "📅 CALENDAR", zh: "📅 日历", ja: "📅 カレンダー" },
     "📝 NOTES": { en: "📝 NOTES", zh: "📝 笔记", ja: "📝 ノート" },
     "🏢 ORG": { en: "🏢 ORG", zh: "🏢 组织", ja: "🏢 組織" },
@@ -3273,7 +3284,7 @@
   function openSettings(tab) {
     modal.classList.add("open");
     const T = (t, label) => `<div class="tab ${tab === t ? "on" : ""}" data-t="${t}">${label}</div>`;
-    const tabs = `<div class="tabs">${T("agents", "AGENTS")}${T("roles", "ROLES")}${T("skills", "SKILLS")}${T("tools", "TOOLS")}${T("connect", "CONNECT")}${T("channels", "CHANNELS")}${T("notify", "🔔 NOTIFY")}${T("budget", "💸 BUDGET")}${T("threads", "THREADS")}</div>`;
+    const tabs = `<div class="tabs">${T("agents", "AGENTS")}${T("roles", "ROLES")}${T("skills", "SKILLS")}${T("tools", "TOOLS")}${T("connect", "CONNECT")}${T("channels", "CHANNELS")}${T("notify", "🔔 NOTIFY")}${T("budget", "💸 BUDGET")}${T("codex", "🧑‍💻 CODEX")}${T("threads", "THREADS")}</div>`;
     let bodyHtml = "";
     if (tab === "agents") {
       bodyHtml = `<div class="switch ${SOUND ? "on" : ""}" id="sndSw">
@@ -3451,6 +3462,29 @@
           </div>
           <div id="bgHint" style="font-size:10.5px;color:var(--dim);margin-top:6px"></div>
         </div>`;
+    } else if (tab === "codex") {
+      bodyHtml = `<div class="field"><label>🧑‍💻 CODEX — เพื่อนร่วมงานสายโค้ดที่เรียกมาช่วยได้ (ไม่ใช่สมองของออฟฟิศ)</label>
+          <div style="font-size:11px;color:var(--dim);margin-bottom:8px">
+            agents เรียก Codex ให้ทำงานย่อยที่ชัดเจนในโปรเจคได้เอง · Director ใช้บรรทัด <b>DELEGATE: codex @ โปรเจค :: งาน</b> · Workflow Builder มี node 🧑‍💻 Codex ·
+            ผลลัพธ์ diff และค่าใช้จ่ายถูกบันทึกไว้ (คิดตามแผน OpenAI ของคุณ ติดป้ายว่าเป็น<b>ค่าประมาณ</b>) · ต้องติดตั้ง <code>codex</code> และ login ก่อน</div>
+          <div id="cxStatus" style="font-size:12px;margin-bottom:8px"></div>
+          <div class="switch" id="cxSw"><div class="knob"></div> เปิดให้ agents เรียกใช้ Codex</div>
+          <div class="assistrow" style="margin-top:8px;flex-wrap:wrap">
+            <select id="cxSandbox" style="flex:1 1 220px" title="SANDBOX">
+              <option value="read-only">read-only — อ่านอย่างเดียว</option>
+              <option value="workspace-write">workspace-write — แก้ไฟล์ในโปรเจคได้ (แนะนำ)</option>
+              <option value="danger-full-access">danger-full-access — เข้าถึงทุกอย่าง (อันตราย)</option>
+            </select>
+            <input id="cxModel" placeholder="MODEL (ว่าง = ค่าเริ่มต้นของ Codex)" style="flex:1 1 160px">
+          </div>
+          <div class="assistrow" style="margin-top:6px;flex-wrap:wrap;align-items:center">
+            <div class="switch" id="cxOss" style="flex:1 1 200px"><div class="knob"></div> ใช้โมเดลในเครื่อง (--oss)</div>
+            <select id="cxLocal" style="flex:0 0 120px"><option value="ollama">ollama</option><option value="lmstudio">LM Studio</option></select>
+            <input id="cxMax" type="number" min="1" max="120" style="flex:0 0 80px" title="MAX MINUTES">
+          </div>
+          <div id="cxHint" style="font-size:10.5px;color:var(--dim);margin-top:6px"></div>
+        </div>
+        <div class="field"><label>🧾 RECENT RUNS — งานที่ Codex ทำล่าสุด</label><div id="cxRuns" style="font-size:11.5px"></div></div>`;
     } else if (tab === "threads") {
       bodyHtml = `<div style="font-size:11px;color:var(--dim);margin-bottom:8px">
           ความจำสนทนาแยกตามตัว agent — คำสั่งผ่าน CEO จะอยู่กับ Claude (Director)
@@ -3723,6 +3757,43 @@
       renderConnectTab();
     } else if (tab === "channels") {
       renderChannels();
+    } else if (tab === "codex") {
+      const hint = modalCard.querySelector("#cxHint");
+      const fill = (j) => {
+        if (!modalCard.querySelector("#cxStatus")) return;
+        const st = modalCard.querySelector("#cxStatus");
+        st.innerHTML = j.installed
+          ? `✅ <b>codex ${escN(j.version || "")}</b> ${tr("พร้อมใช้")}${j.running ? ` · 🔴 ${j.running} ${tr("กำลังทำงาน")}` : ""}`
+          : `⚠ ${tr("ยังไม่พบ codex ในเครื่อง")} — <code>npm i -g @openai/codex</code> ${tr("แล้ว")} <code>codex login</code>`;
+        const s = j.settings || {};
+        modalCard.querySelector("#cxSw").classList.toggle("on", s.enabled !== false);
+        modalCard.querySelector("#cxSandbox").value = s.sandbox || "workspace-write";
+        modalCard.querySelector("#cxModel").value = s.model || "";
+        modalCard.querySelector("#cxOss").classList.toggle("on", !!s.oss);
+        modalCard.querySelector("#cxLocal").value = s.localProvider || "ollama";
+        modalCard.querySelector("#cxMax").value = s.maxMinutes || 20;
+        const runs = modalCard.querySelector("#cxRuns"); runs.innerHTML = "";
+        if (!(j.runs || []).length) runs.innerHTML = `<div style="color:var(--dim)">${tr("ยังไม่มี")}</div>`;
+        for (const r of j.runs || []) {
+          const row = document.createElement("div"); row.className = "arow";
+          const icon = r.state === "running" ? "🔴" : r.state === "done" ? "✅" : "✗";
+          row.innerHTML = `<div class="meta"><b>${icon} ${escN(r.kind === "review" ? "review" : r.task || "")}</b>
+              <span>${escN(nameOf(r.agent))}${r.project ? " · 📁 " + escN(r.project) : ""}${r.diff && r.diff.files ? " · ✎ " + r.diff.files + " " + tr("ไฟล์") : ""}${r.usage ? " · " + ((r.usage.input_tokens || 0) + (r.usage.output_tokens || 0)) + " tok" : ""}${r.error ? " · ⚠ " + escN(r.error.slice(0, 80)) : ""} · ${new Date(r.startedAt).toLocaleTimeString()}</span></div>` +
+            (r.state === "running" ? `<div class="winbtn" title="${tr("หยุด")}">■</div>` : "");
+          const b = row.querySelector(".winbtn"); if (b) b.onclick = () => uiPost("/codex/cancel", { id: r.id }).then(() => openSettings("codex"));
+          row.title = (r.text || "").slice(0, 600);
+          runs.appendChild(row);
+        }
+      };
+      const save = () => uiPost("/codex/settings", {
+        enabled: modalCard.querySelector("#cxSw").classList.contains("on"), sandbox: modalCard.querySelector("#cxSandbox").value,
+        model: modalCard.querySelector("#cxModel").value.trim(), oss: modalCard.querySelector("#cxOss").classList.contains("on"),
+        localProvider: modalCard.querySelector("#cxLocal").value, maxMinutes: Number(modalCard.querySelector("#cxMax").value) || 20,
+      }).then(() => { if (hint) hint.textContent = tr("บันทึกแล้ว"); }).catch(() => { if (hint) hint.textContent = tr("บันทึกไม่สำเร็จ"); });
+      modalCard.querySelector("#cxSw").onclick = (e) => { e.currentTarget.classList.toggle("on"); save(); };
+      modalCard.querySelector("#cxOss").onclick = (e) => { e.currentTarget.classList.toggle("on"); save(); };
+      for (const id of ["cxSandbox", "cxModel", "cxLocal", "cxMax"]) modalCard.querySelector("#" + id).onchange = save;
+      fetch("/codex/status").then((x) => x.json()).then(fill).catch(() => {});
     } else if (tab === "budget") {
       const usd = (n) => "$" + (Math.round(Number(n || 0) * 100) / 100).toFixed(2);
       const hint = modalCard.querySelector("#bgHint");
@@ -3906,6 +3977,7 @@
     let myAura = a.aura || "";
     const mySkills = new Set(a.skills || []);
     const myTools = new Set(a.tools || []);
+    const myMem = new Set(a.memoryPlugins || []);   // 🧠 memory plugins opted into (v1.4)
     const AURAS = [["", "✨ none", "#8294ab"], ["fire", "🔥 fire", "#ff9540"],
       ["ice", "❄ ice", "#6fd3ff"], ["nature", "🍃 nature", "#7be36b"],
       ["arcane", "🔮 arcane", "#cf7dff"], ["shadow", "🌑 shadow", "#6e7488"],
@@ -3960,7 +4032,8 @@
            <button class="send" id="eVoicePlay" title="ฟังตัวอย่างเสียงนี้">▶</button>
          </div></div>
        <div class="field"><label>🎯 SKILLS</label><div class="checks" id="eSkills"></div></div>
-       <div class="field"><label>🔧 TOOLS (ว่าง = ชุดอ่านอย่างเดียว Read/Glob/Grep)</label><div class="checks" id="eTools"></div></div>`;
+       <div class="field"><label>🔧 TOOLS (ว่าง = ชุดอ่านอย่างเดียว Read/Glob/Grep)</label><div class="checks" id="eTools"></div></div>
+       <div class="field" id="eMemField" style="display:none"><label>🧠 MEMORY PLUGINS — ปลั๊กอินที่เติมบริบทให้คนนี้ตอนเริ่มทุกงาน (เลือกเปิดรายคน)</label><div class="checks" id="eMemory"></div></div>`;
     modalCard.innerHTML = hdr(isUser ? "👑 YOUR AVATAR" : (id ? "✏ EDIT AGENT" : "＋ HIRE AGENT")) +
       (isUser ? `<div style="font-size:11.5px;color:var(--dim);margin-bottom:10px">
          นี่คือตัวคุณเองในออฟฟิศ — ไม่มี prompt/skills เพราะคุณคือคนสั่ง ไม่ใช่ AI 😄
@@ -4334,11 +4407,25 @@
               language: modalCard.querySelector("#eLanguage").value,
               rules: modalCard.querySelector("#eRules").value,
             },
-            skills: [...mySkills], tools: [...myTools] };
+            skills: [...mySkills], tools: [...myTools], memoryPlugins: [...myMem] };
       const r = await api("/registry/agent", payload);
       closeModal();
       if (r.id && !isUser) { ensureAgent(r.id); setTarget(r.id); }
     };
+    // 🧠 memory plugins (v1.4): shown only when a loaded plugin provides memory.
+    if (!isUser) Promise.all([fetch("/plugins").then((x) => x.json()), id ? fetch("/registry").then((x) => x.json()) : Promise.resolve({})]).then(([pj, rg]) => {
+      const cur = rg && rg.agents && rg.agents[id];
+      if (cur && Array.isArray(cur.memoryPlugins)) { myMem.clear(); cur.memoryPlugins.forEach((m) => myMem.add(m)); }
+      const provs = (pj.plugins || []).filter((p) => p.hooks && p.hooks.memory);
+      const f = modalCard.querySelector("#eMemField"), box = modalCard.querySelector("#eMemory");
+      if (!provs.length || !f || !box) return;
+      f.style.display = "";
+      for (const p of provs) {
+        const d = document.createElement("div"); d.className = "chk" + (myMem.has(p.id) ? " on" : ""); d.textContent = p.name || p.id;
+        d.onclick = () => { if (myMem.has(p.id)) myMem.delete(p.id); else myMem.add(p.id); d.classList.toggle("on", myMem.has(p.id)); };
+        box.appendChild(d);
+      }
+    }).catch(() => {});
     const del = modalCard.querySelector("#eDel");
     if (del) del.onclick = async () => {
       if (!await confirmDanger(`${t("ลบ agent")}: ${(a && a.name) || id}`,
@@ -4466,7 +4553,7 @@
   };
 
   // ---- 🗂 Office Ops: jobs / calendar / notes / org chart -------------------
-  document.getElementById("opsBtn").onclick = () => openOps("jobs");
+  document.getElementById("opsBtn").onclick = () => openOps("board");
 
   // ---- 🧩 plugins: list + open a plugin's panel inside the modal -----------
   document.getElementById("pluginBtn").onclick = () => openPlugins();
@@ -4864,7 +4951,7 @@
     modal.classList.add("open");
     const seq = ++opsSeq;
     const T = (t, label) => `<div class="tab ${tab === t ? "on" : ""}" data-t="${t}">${label}</div>`;
-    const tabs = `<div class="tabs">${T("proj", "📁 PROJECTS")}${T("jobs", "📋 TASKS")}${T("cal", "📅 CALENDAR")}${T("notes", "📝 NOTES")}${T("org", "🏢 ORG")}${T("dash", "📊 STATS")}</div>`;
+    const tabs = `<div class="tabs">${T("proj", "📁 PROJECTS")}${T("board", "📋 TASKS")}${T("jobs", "🔁 JOBS")}${T("cal", "📅 CALENDAR")}${T("notes", "📝 NOTES")}${T("org", "🏢 ORG")}${T("dash", "📊 STATS")}</div>`;
     let body = "";
     if (tab === "dash") {
       body = `<div id="dashBox" style="font-size:12px;color:var(--dim)">loading…</div>`;
@@ -4894,6 +4981,18 @@
             <button id="plBrowse" title="เลือกโฟลเดอร์">📂</button>
             <button class="primary" id="plAdd">＋</button>
           </div></div>`;
+    } else if (tab === "board") {
+      body = `<div id="bdSummary" style="font-size:11px;color:var(--dim);margin-bottom:6px"></div>
+        <div class="assistrow" style="margin-bottom:8px;flex-wrap:wrap">
+          <input id="bdTitle" placeholder="＋ งานใหม่… เช่น เขียนโพสต์เปิดตัว" maxlength="200" style="flex:1 1 180px">
+          <select id="bdOwner" style="flex:0 0 120px"></select>
+          <input id="bdDue" type="date" style="flex:0 0 130px" title="กำหนดส่ง">
+          <button class="primary" id="bdAdd">＋</button>
+        </div>
+        <div id="bdEdit"></div>
+        <div class="board" id="bdCols"></div>
+        <div style="font-size:10.5px;color:var(--dim);margin-top:8px">
+          ลากการ์ดข้ามคอลัมน์ได้ · คลิกการ์ดเพื่อแก้ไข · งานที่มอบหมาย งานตั้งเวลา action item จากประชุม และ workflow ที่รัน จะขึ้นเป็นการ์ดเอง · agents ย้ายการ์ดของตัวเองขณะทำงาน</div>`;
     } else if (tab === "jobs") {
       body = `<div id="jlist"></div>
         <div class="field" style="margin-top:10px"><label>＋ สั่งงานใหม่</label>
@@ -4922,12 +5021,28 @@
               <option value="10" selected>เตือนก่อน 10 นาที</option>
               <option value="30">เตือนก่อน 30 นาที</option>
               <option value="60">เตือนก่อน 1 ชม.</option>
+              <option value="1440">เตือนก่อน 1 วัน</option>
             </select>
+          </div>
+          <div class="assistrow" style="margin-top:6px;align-items:center">
+            <select id="cRepeat" style="flex:1" title="REPEAT">
+              <option value="">ไม่ซ้ำ</option>
+              <option value="daily">🔁 ทุกวัน</option>
+              <option value="weekdays">🔁 ทุกวันทำงาน (จ–ศ)</option>
+              <option value="weekly">🔁 ทุกสัปดาห์</option>
+              <option value="monthly">🔁 ทุกเดือน</option>
+            </select>
+            <div class="chk" id="cAllDay" title="ALL DAY">🗓 ทั้งวัน</div>
           </div>
           <button class="bigbtn" id="cAdd" style="margin-top:8px">📅 บันทึกนัด</button>
         </div>
+        <div class="assistrow" style="margin-top:8px">
+          <button class="sparkle" id="cExport" title="ICS EXPORT">📤 ส่งออก .ics</button>
+          <button class="sparkle" id="cImport" title="ICS IMPORT">📥 นำเข้า .ics</button>
+          <input id="cIcsFile" type="file" accept=".ics,text/calendar" style="display:none">
+        </div>
         <div style="font-size:10.5px;color:var(--dim);margin-top:8px">
-          🔔 Director จะเดินมาเตือนคุณก่อนถึงเวลา ตามที่ตั้งไว้</div>`;
+          🔔 Director จะเดินมาเตือนคุณก่อนถึงเวลา ตามที่ตั้งไว้ · นัดที่ซ้ำจะเตือนทุกครั้ง · agents จองนัดให้คุณได้ผ่าน API</div>`;
     } else if (tab === "notes") {
       body = `<div id="nlist"></div>
         <div class="assistrow" style="margin-top:10px">
@@ -5181,6 +5296,81 @@
         const f = modalCard.querySelector("#plFolder").value.trim();
         if (n && f) { await api("/places", { name: n, folder: f }); openOps("proj"); }
       };
+    } else if (tab === "board") {
+      const r = await fetch("/tasks/board").then((x) => x.json()).catch(() => null);
+      if (!r || seq !== opsSeq) return;
+      const agents = r.agents || {};
+      const who = (id) => id === "you" ? tr("ฉัน") : (agents[id] || id);
+      const sel = modalCard.querySelector("#bdOwner");
+      sel.innerHTML = `<option value="you">${tr("ฉัน")}</option>` +
+        Object.entries(agents).filter(([id]) => id !== "ceo").map(([id, n]) => `<option value="${id}">${esc(n)}</option>`).join("");
+      const sm = r.summary || {};
+      modalCard.querySelector("#bdSummary").textContent =
+        `${sm.open || 0} ${tr("ค้าง")} · ${sm.doing || 0} ${tr("กำลังทำ")} · ${sm.waiting || 0} ${tr("รอ")} · ${sm.overdue || 0} ${tr("เลยกำหนด")} · ${sm.doneToday || 0} ${tr("เสร็จวันนี้")}`;
+      const refresh = () => { if (modal.classList.contains("open") && modalCard.querySelector("#bdCols")) openOps("board"); };
+      modalCard.querySelector("#bdAdd").onclick = async () => {
+        const title = modalCard.querySelector("#bdTitle").value.trim(); if (!title) return;
+        await uiPost("/tasks", { title, owner: sel.value, due: modalCard.querySelector("#bdDue").value || "" });
+        refresh();
+      };
+      modalCard.querySelector("#bdTitle").onkeydown = (e) => { if (e.key === "Enter") modalCard.querySelector("#bdAdd").click(); };
+      const cols = modalCard.querySelector("#bdCols"); cols.innerHTML = "";
+      const KIND = { delegation: "🕊", job: "🔁", action: "🗣", workflow: "🔀", task: "" };
+      const openCards = [].concat(r.board.todo, r.board.doing, r.board.waiting);
+      const editCard = (t) => {
+        const ed = modalCard.querySelector("#bdEdit");
+        const toLocal = (ms) => ms ? new Date(ms - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
+        const rec = t.recurrence ? (t.recurrence.every) : "";
+        ed.innerHTML = `<div class="field" style="margin-bottom:8px">
+            <input id="ce_title" maxlength="200" style="width:100%;margin-bottom:6px">
+            <textarea id="ce_detail" style="width:100%;min-height:48px;margin-bottom:6px" placeholder="${tr("รายละเอียด…")}"></textarea>
+            <div class="assistrow" style="flex-wrap:wrap">
+              <select id="ce_owner" style="flex:1 1 120px">${sel.innerHTML}</select>
+              <input id="ce_due" type="datetime-local" style="flex:1 1 150px" value="${toLocal(t.due)}">
+              <select id="ce_pri" style="flex:0 0 110px"><option value="1">🔴 P1</option><option value="2">🟡 P2</option><option value="3">⚪ P3</option><option value="4">⚫ P4</option></select>
+              <select id="ce_rec" style="flex:0 0 120px"><option value="">${tr("ไม่ซ้ำ")}</option><option value="day">${tr("ทุกวัน")}</option><option value="week">${tr("ทุกสัปดาห์")}</option><option value="month">${tr("ทุกเดือน")}</option></select>
+            </div>
+            <div class="assistrow" style="margin-top:6px;flex-wrap:wrap;align-items:center">
+              <span style="font-size:11px;color:var(--dim)">🔒 ${tr("รอให้เสร็จก่อน")}:</span>
+              <select id="ce_dep" multiple style="flex:1 1 200px;min-height:44px;font-size:11px">${openCards.filter((c) => c.id !== t.id).map((c) => `<option value="${c.id}"${(t.dependsOn || []).includes(c.id) ? " selected" : ""}>${esc(c.title)}</option>`).join("")}</select>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+              <button class="bigbtn" id="ce_save" style="flex:1;margin:0">💾 บันทึก</button>
+              <button class="sparkle" id="ce_done">✅ เสร็จแล้ว</button>
+              <button class="winbtn" id="ce_del" title="ลบ">✕</button>
+              <button class="winbtn" id="ce_x" title="ยกเลิก">↩</button>
+            </div></div>`;
+        ed.querySelector("#ce_title").value = t.title; ed.querySelector("#ce_detail").value = t.detail || "";
+        ed.querySelector("#ce_owner").value = t.owner; ed.querySelector("#ce_pri").value = String(t.priority); ed.querySelector("#ce_rec").value = rec;
+        ed.querySelector("#ce_x").onclick = () => { ed.innerHTML = ""; };
+        ed.querySelector("#ce_save").onclick = () => {
+          const dv = ed.querySelector("#ce_due").value;
+          uiPost("/tasks/update", { id: t.id, title: ed.querySelector("#ce_title").value, detail: ed.querySelector("#ce_detail").value,
+            owner: ed.querySelector("#ce_owner").value, due: dv ? new Date(dv).getTime() : 0, priority: Number(ed.querySelector("#ce_pri").value),
+            recurrence: ed.querySelector("#ce_rec").value ? { every: ed.querySelector("#ce_rec").value } : null,
+            dependsOn: [...ed.querySelector("#ce_dep").selectedOptions].map((o) => o.value) }).then(refresh);
+        };
+        ed.querySelector("#ce_done").onclick = () => uiPost("/tasks/move", { id: t.id, status: "done" }).then(refresh);
+        ed.querySelector("#ce_del").onclick = () => askConfirm(tr("ลบการ์ดนี้?")).then((ok) => ok && uiPost("/tasks/delete", { id: t.id }).then(refresh));
+        ed.scrollIntoView({ block: "nearest" });
+      };
+      for (const [st, label] of [["todo", "📝 TODO"], ["doing", "🔨 DOING"], ["waiting", "⏸ WAITING"], ["done", "✅ DONE"]]) {
+        const col = document.createElement("div"); col.className = "bcol";
+        col.innerHTML = `<h5>${label} <span style="opacity:.6">${r.board[st].length}</span></h5>`;
+        col.ondragover = (e) => { e.preventDefault(); col.classList.add("drop"); };
+        col.ondragleave = () => col.classList.remove("drop");
+        col.ondrop = (e) => { e.preventDefault(); col.classList.remove("drop"); const id = e.dataTransfer.getData("text/plain"); if (id) uiPost("/tasks/move", { id, status: st }).then(refresh); };
+        for (const t of r.board[st]) {
+          const c = document.createElement("div");
+          c.className = "card p" + t.priority + (t.overdue ? " over" : "") + (t.blocked ? " blocked" : ""); c.draggable = true;
+          c.ondragstart = (e) => e.dataTransfer.setData("text/plain", t.id);
+          const meta = [who(t.owner), t.project ? "📁 " + t.project : "", t.due ? "⏰ " + new Date(t.due).toLocaleDateString() : "", t.blocked ? "🔒" : "", t.recurrence ? "🔁" : ""].filter(Boolean).join(" · ");
+          c.innerHTML = `<div>${KIND[t.kind] ? KIND[t.kind] + " " : ""}${esc(t.title)}</div><div class="m">${esc(meta)}</div>`;
+          c.onclick = () => editCard(t);
+          col.appendChild(c);
+        }
+        cols.appendChild(col);
+      }
     } else if (tab === "jobs") {
       // 💡 team project proposals waiting for the CEO's verdict.
       fetch("/proposals").then((x) => x.json()).then((r) => {
@@ -5361,51 +5551,74 @@
         box.appendChild(row);
       }
     } else if (tab === "cal") {
+      const allDayChk = modalCard.querySelector("#cAllDay");
+      allDayChk.onclick = () => allDayChk.classList.toggle("on");
+      const REPEAT = { daily: { freq: "daily" }, weekdays: { freq: "weekly", byDay: ["MO", "TU", "WE", "TH", "FR"] }, weekly: { freq: "weekly" }, monthly: { freq: "monthly" } };
       modalCard.querySelector("#cAdd").onclick = async () => {
         const title = modalCard.querySelector("#cTitle").value.trim();
         const v = modalCard.querySelector("#cAt").value;
         if (!title || !v) return;
         await api("/calendar", { title, at: new Date(v).getTime(),
-          remindMin: Number(modalCard.querySelector("#cRemind").value) });
+          remindMin: Number(modalCard.querySelector("#cRemind").value),
+          recurrence: REPEAT[modalCard.querySelector("#cRepeat").value] || null,
+          allDay: allDayChk.classList.contains("on") });
         openOps("cal");
       };
-      const r = await fetch("/calendar").then((x) => x.json()).catch(() => ({ cal: [] }));
+      modalCard.querySelector("#cExport").onclick = () => { try { window.open("/calendar/ics", "_blank"); } catch {} };
+      const fileInp = modalCard.querySelector("#cIcsFile");
+      modalCard.querySelector("#cImport").onclick = () => fileInp.click();
+      fileInp.onchange = () => {
+        const f = fileInp.files && fileInp.files[0]; if (!f) return;
+        f.text().then((text) => fetch("/calendar/import", { method: "POST", headers: { "content-type": "text/calendar", "x-bagidea-ui": "1" }, body: text }))
+          .then((x) => x.json()).then((j) => { addChip(`📥 ${tr("นำเข้าแล้ว")} ${j.added} · ${tr("อัปเดต")} ${j.updated}`); openOps("cal"); })
+          .catch(() => addChip(tr("นำเข้าไม่สำเร็จ")));
+      };
+      const r = await fetch("/calendar").then((x) => x.json()).catch(() => ({ cal: [], upcoming: [] }));
+      if (seq !== opsSeq) return;
       const box = modalCard.querySelector("#clist");
-      const upcoming = (r.cal || []).sort((a, b) => a.at - b.at);
+      const byId = {}; for (const c of r.cal || []) byId[c.id] = c;
+      const upcoming = (r.upcoming || []).slice(0, 60);
       box.innerHTML = upcoming.length ? "" :
         `<div style="font-size:11.5px;color:var(--dim)">ยังไม่มีนัดหมาย</div>`;
-      for (const c of upcoming) {
-        const past = c.at < Date.now();
-        const reminded = c.notified && !past;   // alerted + time is near → urge
+      let lastDay = "";
+      for (const o of upcoming) {
+        const c = byId[o.eventId] || { id: o.eventId, title: o.title, at: o.at, remindMin: o.remindMin };
+        const day = new Date(o.at).toDateString();
+        if (day !== lastDay) { lastDay = day; box.insertAdjacentHTML("beforeend", `<div style="font-size:10.5px;color:var(--dim);margin:8px 0 3px;letter-spacing:.3px">${esc(new Date(o.at).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }))}</div>`); }
+        const soon = c.notifiedAt === o.at && o.at > Date.now();
         const row = document.createElement("div");
         row.className = "arow";
         const del = () => api("/calendar", { remove: c.id }).then(() => openOps("cal"));
         const view = () => {
-          row.style.display = ""; row.style.opacity = past ? "0.5" : "1";
-          row.style.borderLeft = reminded ? "3px solid #ffcf5e" : "";
-          row.style.background = reminded ? "rgba(255,207,94,0.08)" : "";
-          row.innerHTML = `<div class="meta"><b>${past ? "✓ " : reminded ? "🔔 " : "📅 "}${esc(c.title)}</b>
-              <span>${new Date(c.at).toLocaleString()} · เตือนก่อน ${c.remindMin} นาที${reminded ? " · ⚠ ใกล้ถึงแล้ว" : ""}</span></div>` +
-            (past ? "" : `<div class="winbtn" title="แก้ไข">✎</div>`) +
-            `<div class="winbtn hide" title="ลบ">✕</div>`;
+          row.style.display = ""; row.style.borderLeft = soon ? "3px solid #ffcf5e" : ""; row.style.background = soon ? "rgba(255,207,94,0.08)" : "";
+          const when = o.allDay ? tr("ทั้งวัน") : new Date(o.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + (o.end ? "–" + new Date(o.end).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "");
+          row.innerHTML = `<div class="meta"><b>${soon ? "🔔 " : o.recurring ? "🔁 " : "📅 "}${esc(c.title)}</b>
+              <span>${esc(when)}${c.remindMin ? " · " + tr("เตือนก่อน") + " " + c.remindMin + " " + tr("นาที") : ""}${c.agent ? " · " + esc(nameOf(c.agent)) : ""}${soon ? " · ⚠ " + tr("ใกล้ถึงแล้ว") : ""}</span></div>` +
+            `<div class="winbtn" title="แก้ไข">✎</div><div class="winbtn hide" title="ลบ">✕</div>`;
           const wb = row.querySelectorAll(".winbtn");
-          if (past) { wb[0].onclick = del; }
-          else { wb[0].onclick = edit; wb[1].onclick = del; }
+          wb[0].onclick = edit; wb[1].onclick = del;
         };
         const edit = () => {
           const toLocal = (ms) => ms ? new Date(ms - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : "";
           row.style.display = "block"; row.style.borderLeft = ""; row.style.background = "";
           row.innerHTML =
             `<input id="ce_t" style="width:100%;margin-bottom:6px">
-             <input id="ce_at" type="datetime-local" value="${toLocal(c.at)}" style="margin-bottom:8px">
+             <div class="assistrow" style="margin-bottom:8px;flex-wrap:wrap">
+               <input id="ce_at" type="datetime-local" value="${toLocal(c.at)}" style="flex:1 1 170px">
+               <select id="ce_rep" style="flex:0 0 130px"><option value="">${tr("ไม่ซ้ำ")}</option><option value="daily">${tr("ทุกวัน")}</option><option value="weekdays">${tr("ทุกวันทำงาน")}</option><option value="weekly">${tr("ทุกสัปดาห์")}</option><option value="monthly">${tr("ทุกเดือน")}</option></select>
+               <input id="ce_rm" type="number" min="0" value="${c.remindMin || 0}" style="flex:0 0 70px" title="REMIND MIN">
+             </div>
              <div style="display:flex;gap:6px">
                <button class="bigbtn" id="ce_s" style="flex:1;margin:0">💾 บันทึก</button>
                <button class="winbtn" id="ce_x" title="ยกเลิก">✕</button></div>`;
           row.querySelector("#ce_t").value = c.title;
+          const rc = c.recurrence; row.querySelector("#ce_rep").value = !rc ? "" : (rc.freq === "weekly" && rc.byDay && rc.byDay.length === 5) ? "weekdays" : rc.freq;
           row.querySelector("#ce_x").onclick = view;
           row.querySelector("#ce_s").onclick = () => {
             const v = row.querySelector("#ce_at").value;
-            api("/calendar", { edit: c.id, title: row.querySelector("#ce_t").value, at: v ? new Date(v).getTime() : c.at })
+            api("/calendar", { edit: c.id, title: row.querySelector("#ce_t").value, at: v ? new Date(v).getTime() : c.at,
+              remindMin: Number(row.querySelector("#ce_rm").value) || 0,
+              recurrence: REPEAT[row.querySelector("#ce_rep").value] || null })
               .then(() => openOps("cal"));
           };
         };

@@ -88,6 +88,17 @@ Inbox
   bagidea budget set office 5   Cap the office at $5/day · set agent <id> 2 · set project <id> 40 · off
   bagidea budget digest [on|off|HH:MM]   The morning digest (no argument = send it now)
 
+Work
+  bagidea tasks [todo|doing|waiting|done]   The task board — every open card, or one column
+  bagidea task add "<title>" [--owner id] [--due YYYY-MM-DD] [--p 1-4] [--project name]
+  bagidea task done <n|id>      Move a card to done · task move <n|id> <status>
+  bagidea cal                   The next 30 days (recurrence expanded)
+  bagidea cal add "<title>" <YYYY-MM-DDTHH:MM> [--every day|week|month] [--remind <min>]
+  bagidea cal ics > office.ics  Export the calendar
+  bagidea codex                 Codex status + recent runs
+  bagidea codex "<task>" --project <name>   Hand Codex a task (returns when it finishes)
+  bagidea codex review [project]            A second-opinion review of the uncommitted changes
+
 Maintenance
   bagidea doctor                Diagnose why the office won't load — port, proxy,
                                 firewall, execution policy, missing claude CLI.

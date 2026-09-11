@@ -8,7 +8,7 @@ const path = require("path");
 const { spawn, execFileSync } = require("child_process");
 
 const ROOT = path.join(__dirname, "..");
-const BASE = "http://127.0.0.1:8787";
+const BASE = "http://127.0.0.1:" + (process.env.OEP_PORT || 8787);   // OEP_PORT: talk to a daemon on another port (tests, a second office)
 
 // ---- palette (truecolor; degrades fine on basic terminals) -------------------
 const c = {
@@ -63,7 +63,7 @@ function req(method, p, body, asBuffer) {
         catch { resolve(buf.toString("utf8")); }
       });
     });
-    r.setTimeout(method === "POST" && (p === "/chat" || p === "/tts" || p === "/gen/image")
+    r.setTimeout(method === "POST" && (p === "/chat" || p === "/tts" || p === "/gen/image" || p.startsWith("/codex/"))
       ? 11 * 60000 : 8000, () => r.destroy(new Error("timeout")));
     r.on("error", reject);
     if (data) r.write(data);
@@ -140,6 +140,11 @@ function help() {
   row("budget", "Today's spend vs your caps (office · agent · project)");
   row("budget set office 5", "Cap the office at $5/day · set agent <id> 2 · set project <id> 40 · off");
   row("budget digest [on|off|HH:MM]", "Morning digest: yesterday's spend + what's waiting");
+  head("Work");
+  row("tasks [todo|doing|waiting|done]", "The task board — every open card, or one column");
+  row('task add "<title>" [--owner id] [--due YYYY-MM-DD] [--p 1-4]', "Add a card · task done <n|id> · task move <n|id> <status>");
+  row('cal [add "<title>" <YYYY-MM-DDTHH:MM> [--every day|week|month]]', "Upcoming events (30 days) · `cal ics > office.ics` exports");
+  row('codex ["<task>" --project <name>]', "Codex status + recent runs, or hand it a task · codex review [project]");
 
   head("Maintenance");
   row("doctor", "Diagnose why the office won't load (ports, proxy, firewall)");
@@ -406,6 +411,98 @@ async function main() {
     const agents = Object.entries(j.agents || {}); if (agents.length) { head("agents"); for (const [id, a] of agents) console.log(`  ${id.padEnd(14)} ${bar(a.spent, a.cap)}`); }
     const projects = Object.entries(j.projects || {}); if (projects.length) { head("projects (lifetime)"); for (const [id, p] of projects) console.log(`  ${id.padEnd(14)} ${bar(p.total, p.cap)}`); }
     info(`digest: ${j.digest.enabled ? "on at " + j.digest.time : "off"}  ·  set caps: bagidea budget set office 5`);
+    console.log("");
+    return;
+  }
+
+  // ---- 📋 tasks / 📅 calendar / 🧑‍💻 codex (v1.4) --------------------------------
+  const flag = (name) => { const i = rest.indexOf("--" + name); return i > -1 ? rest[i + 1] : undefined; };
+  const positional = () => rest.filter((x, i) => !x.startsWith("--") && !(i > 0 && rest[i - 1].startsWith("--")));
+  if (cmd === "tasks") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const j = await req("GET", "/tasks/board");
+    const cols = rest[0] && j.board[rest[0]] ? [rest[0]] : ["todo", "doing", "waiting", "done"];
+    banner();
+    const sm = j.summary || {};
+    info(`${sm.open || 0} open · ${sm.doing || 0} doing · ${sm.waiting || 0} waiting · ${sm.overdue || 0} overdue · ${sm.doneToday || 0} done today`);
+    let n = 0;
+    for (const col of cols) {
+      const items = col === "done" ? j.board.done.slice(0, 8) : j.board[col];
+      head(`${{ todo: "📝", doing: "🔨", waiting: "⏸", done: "✅" }[col]} ${col.toUpperCase()} (${j.board[col].length})`);
+      if (!items.length) console.log(`  ${c.gray}—${c.reset}`);
+      for (const t of items) {
+        n++;
+        const who = t.owner === "you" ? "you" : (j.agents[t.owner] || t.owner);
+        console.log(`  ${c.accent}${String(n).padStart(2)}${c.reset}. ${t.priority <= 2 ? c.warn : ""}P${t.priority}${c.reset} ${c.bold}${t.title}${c.reset}  ${c.gray}${who}${t.project ? " · " + t.project : ""}${t.due ? " · due " + new Date(t.due).toLocaleDateString() : ""}${t.blocked ? " · 🔒" : ""}${t.overdue ? c.err + " · OVERDUE" + c.reset : ""} [${t.id}]${c.reset}`);
+      }
+    }
+    console.log("");
+    return;
+  }
+  if (cmd === "task") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const sub = rest[0];
+    if (sub === "add") {
+      const title = positional().slice(1).join(" ").trim();
+      if (!title) return bad('usage: bagidea task add "<title>" [--owner <id>] [--due YYYY-MM-DD] [--p 1-4] [--project <name>]');
+      const t = await req("POST", "/tasks", { title, owner: flag("owner") || "you", due: flag("due") || "", priority: Number(flag("p")) || 3, project: flag("project") || "" });
+      return t && t.id ? ok(`added [${t.id}] ${t.title}${t.status === "waiting" ? " (waiting)" : ""}`) : bad(String(t && t.error || t));
+    }
+    if (sub === "done" || sub === "move") {
+      const target = rest[1], status = sub === "done" ? "done" : rest[2];
+      if (!target || !status) return bad(`usage: bagidea task ${sub} <n|id>${sub === "move" ? " <todo|doing|waiting|done>" : ""}`);
+      const j = await req("GET", "/tasks/board");
+      const all = [].concat(j.board.todo, j.board.doing, j.board.waiting, j.board.done.slice(0, 8));
+      const item = /^\d+$/.test(target) ? all[Number(target) - 1] : all.find((t) => t.id === target) || (await req("GET", "/tasks")).tasks.find((t) => t.id === target);
+      if (!item) return bad(`no card matches "${target}" — see: bagidea tasks`);
+      const r = await req("POST", "/tasks/move", { id: item.id, status });
+      return r && r.id ? ok(`${status} → ${item.title}`) : bad(String(r));
+    }
+    return bad("usage: bagidea task add \"<title>\" | done <n|id> | move <n|id> <status>");
+  }
+  if (cmd === "cal") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    if (rest[0] === "ics") { process.stdout.write(String(await req("GET", "/calendar/ics"))); return; }
+    if (rest[0] === "add") {
+      const p = positional().slice(1);
+      const when = p[p.length - 1], title = p.slice(0, -1).join(" ").trim();
+      if (!title || !when || Number.isNaN(Date.parse(when))) return bad('usage: bagidea cal add "<title>" <YYYY-MM-DDTHH:MM> [--every day|week|month] [--remind <min>]');
+      const every = flag("every");
+      const rec = every ? { freq: { day: "daily", week: "weekly", month: "monthly" }[every] || every } : null;
+      const r = await req("POST", "/calendar", { title, at: when, remindMin: Number(flag("remind")) || 10, recurrence: rec });
+      return r && r.id ? ok(`booked ${r.title} — ${new Date(r.at).toLocaleString()}${rec ? " · every " + every : ""}`) : bad(String(r));
+    }
+    const j = await req("GET", "/calendar");
+    banner(); head(`📅 Next 30 days (${(j.upcoming || []).length})`);
+    if (!(j.upcoming || []).length) ok("nothing booked");
+    for (const o of (j.upcoming || []).slice(0, 40))
+      console.log(`  ${o.recurring ? "🔁" : "📅"} ${c.bold}${new Date(o.at).toLocaleString()}${c.reset}  ${o.title}${o.allDay ? c.gray + "  (all day)" + c.reset : ""}`);
+    console.log("");
+    return;
+  }
+  if (cmd === "codex") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    if (rest[0] === "review") {
+      info("asking Codex for a review… (this can take minutes)");
+      const r = await req("POST", "/codex/review", { project: rest[1] || flag("project") || "", instructions: flag("ask") || "" });
+      console.log(""); console.log((r.text || r.error || "").split("\n").map((l) => "  " + l).join("\n")); console.log("");
+      return r.ok ? ok("review done") : bad("review failed: " + (r.error || "unknown"));
+    }
+    const task = positional().join(" ").trim();
+    if (task) {
+      info("Codex is working… (the call returns when it finishes)");
+      const r = await req("POST", "/codex/exec", { task, project: flag("project") || "", sandbox: flag("sandbox") });
+      console.log(""); console.log((r.text || r.error || "").split("\n").map((l) => "  " + l).join("\n")); console.log("");
+      if (r.diff && r.diff.files) info(`changes: ${r.diff.files} file(s) ${r.diff.summary ? "— " + r.diff.summary : ""}`);
+      return r.ok ? ok("done") : bad("failed: " + (r.error || "unknown"));
+    }
+    const j = await req("GET", "/codex/status");
+    banner();
+    head("🧑‍💻 Codex");
+    if (j.installed) ok(`codex ${j.version} · sandbox ${j.settings.sandbox}${j.settings.model ? " · model " + j.settings.model : ""}${j.settings.oss ? " · local (" + j.settings.localProvider + ")" : ""}${j.settings.enabled ? "" : c.warn + " · switched OFF" + c.reset}`);
+    else bad("codex not found — npm i -g @openai/codex, then: codex login");
+    if ((j.runs || []).length) { head("recent runs"); for (const r of j.runs.slice(0, 10)) console.log(`  ${r.state === "done" ? "✅" : r.state === "running" ? "🔴" : "✗"} ${c.gray}${new Date(r.startedAt).toLocaleTimeString()}${c.reset} ${r.kind === "review" ? "review" : r.task.slice(0, 70)}${r.diff && r.diff.files ? c.gray + "  ✎ " + r.diff.files : ""}${c.reset}`); }
+    info('hand it a task: bagidea codex "add a --json flag to the exporter" --project my-app');
     console.log("");
     return;
   }

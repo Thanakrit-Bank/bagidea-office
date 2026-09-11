@@ -30,8 +30,37 @@ module.exports = function initTriggers(ctx) {
   const workflows = ctx.workflows;              // the engine
   const log = ctx.log || (() => {});
   const now = ctx.now || (() => Date.now());
-  const watchers = new Map();                   // trigger id -> fs.FSWatcher
+  const watchers = new Map();                   // trigger id -> fs.FSWatcher | { close }
   const debounce = new Map();                   // trigger id|file -> timer
+  // Plugin-contributed kinds (design H): { start(trigger, fire) → handle, stop?(handle, trigger), label?, fields? }
+  const custom = new Map();                     // kind -> { def, owner }
+  function registerKind(kind, def, owner) {
+    const k = String(kind || "").trim().toLowerCase();
+    if (!/^[a-z][\w-]{1,30}$/.test(k)) throw new Error("bad trigger kind: " + kind);
+    if (KINDS.has(k)) throw new Error("trigger kind is built in: " + k);
+    if (!def || typeof def.start !== "function") throw new Error("a trigger kind needs start(trigger, fire)");
+    custom.set(k, { def, owner: owner || "" });
+    for (const t of all()) if (t.kind === k && t.enabled) startWatcher(t);   // triggers saved before the plugin loaded
+    return k;
+  }
+  function unregisterOwner(owner) {
+    for (const [k, v] of [...custom.entries()]) if (v.owner === owner) {
+      for (const t of all()) if (t.kind === k) stopWatcher(t.id);
+      custom.delete(k);
+    }
+  }
+  function kinds() {
+    return [...KINDS].map((k) => ({ kind: k, builtin: true }))
+      .concat([...custom.entries()].map(([k, v]) => ({ kind: k, builtin: false, owner: v.owner, label: v.def.label || k, fields: v.def.fields || [] })));
+  }
+  // A plugin fires its own kind by name (every enabled trigger of that kind) or one trigger by id.
+  function fireKind(kindOrId, data, owner) {
+    const byId = get(kindOrId);
+    if (byId) { fire(byId.id, { event: byId.kind, data: data || {} }); return 1; }
+    let n = 0;
+    for (const t of all()) if (t.kind === kindOrId && t.enabled) { fire(t.id, { event: t.kind, data: data || {} }); n++; }
+    return n;
+  }
 
   function all() { return Array.isArray(reg.triggers) ? reg.triggers : (reg.triggers = []); }
   function get(id) { return all().find((t) => t.id === id) || null; }
@@ -41,7 +70,7 @@ module.exports = function initTriggers(ctx) {
   function newId() { const t = now(); let id; do { id = "tr" + t + (seq ? "-" + seq : ""); seq++; } while (get(id)); return id; }
 
   function add(spec) {
-    if (!KINDS.has(spec.kind)) throw new Error("unknown trigger kind");
+    if (!KINDS.has(spec.kind) && !custom.has(spec.kind)) throw new Error("unknown trigger kind");
     if (!spec.workflowId || !workflows.load(spec.workflowId)) throw new Error("workflow not found");
     const t = { id: newId(), kind: spec.kind, workflowId: String(spec.workflowId), enabled: spec.enabled !== false,
                 name: String(spec.name || "").slice(0, 80), cfg: cleanCfg(spec.kind, spec.cfg || {}), created: now(), lastRun: 0, runs: 0 };
@@ -66,6 +95,11 @@ module.exports = function initTriggers(ctx) {
     return all().length < before;
   }
   function cleanCfg(kind, c) {
+    if (custom.has(kind)) {                       // a plugin's own kind: keep flat string/number/boolean fields
+      const o = {};
+      for (const [k, v] of Object.entries(c || {})) if (/^[\w-]{1,40}$/.test(k) && ["string", "number", "boolean"].includes(typeof v)) o[k] = typeof v === "string" ? v.slice(0, 500) : v;
+      return o;
+    }
     const o = {};
     if (kind === "schedule") { o.everyMin = Math.max(0, Number(c.everyMin) || 0); o.at = /^\d\d:\d\d$/.test(c.at || "") ? c.at : ""; if (!o.everyMin && !o.at) o.everyMin = 60; }
     if (kind === "webhook") { if (c.token) o.token = String(c.token).replace(/[^\w-]/g, "").slice(0, 64); if (c.secret !== undefined) o.secret = String(c.secret || ""); }
@@ -147,6 +181,15 @@ module.exports = function initTriggers(ctx) {
   // file — fs.watch on a folder, debounced per file, filtered by a simple glob
   function globToRe(g) { return new RegExp("^" + String(g || "*").replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$", "i"); }
   function startWatcher(t) {
+    if (custom.has(t.kind)) {
+      if (!t.enabled || watchers.has(t.id)) return;
+      const { def } = custom.get(t.kind);
+      try {
+        const handle = def.start(pub(t), (data) => { try { fire(t.id, { event: t.kind, data: data || {} }); } catch (e) { log("[trigger] " + t.kind + " " + e.message); } });
+        watchers.set(t.id, { close: () => { try { if (def.stop) def.stop(handle, pub(t)); } catch {} } });
+      } catch (e) { log("[trigger] " + t.kind + " start: " + e.message); }
+      return;
+    }
     if (t.kind !== "file" || !t.enabled || !t.cfg.dir) return;
     try {
       if (!fs.existsSync(t.cfg.dir)) return;
@@ -172,5 +215,5 @@ module.exports = function initTriggers(ctx) {
   function stopAll() { for (const id of [...watchers.keys()]) stopWatcher(id); }
 
   return { KINDS, list: () => all().map(pub), get: (id) => { const t = get(id); return t ? pub(t) : null; },
-           add, update, remove, fire, tick, onEvent, onChannel, webhook, startAll, stopAll, globToRe };
+           add, update, remove, fire, tick, onEvent, onChannel, webhook, startAll, stopAll, globToRe, registerKind, unregisterOwner, kinds, fireKind };
 };

@@ -38,6 +38,7 @@ const https = require("https");
 
 const MAX_RUNS = 200;
 const AGENT_TYPES = new Set(["action", "agent"]);
+const BUILTIN = ["trigger", "action", "fetch", "decision", "approval", "notify", "delay", "output", "note"];
 
 module.exports = function initWorkflows(ctx) {
   const DIR = ctx.dir;                                   // workspace/workflows
@@ -55,6 +56,22 @@ module.exports = function initWorkflows(ctx) {
   fs.mkdirSync(RUNS, { recursive: true });
   const live = new Map();          // runId -> run (in memory while active)
   const timers = new Map();        // runId|nodeId -> delay timer
+  // Node types contributed by the office (codex) or by plugins (design H):
+  // kind -> { impl(node, helpers) → output | Promise, label, hint, owner }
+  const custom = new Map();
+  function registerNode(kind, impl, meta) {
+    const k = String(kind || "").trim().toLowerCase();
+    if (!/^[a-z][\w-]{1,30}$/.test(k)) throw new Error("bad node kind: " + kind);
+    if (BUILTIN.includes(k)) throw new Error("node kind is built in: " + k);
+    if (typeof impl !== "function") throw new Error("a node kind needs impl(node, helpers)");
+    custom.set(k, { impl, label: (meta && meta.label) || k, hint: (meta && meta.hint) || "", owner: (meta && meta.owner) || "" });
+    return k;
+  }
+  function unregisterOwner(owner) { for (const [k, v] of [...custom.entries()]) if (v.owner === owner) custom.delete(k); }
+  function nodeTypes() {
+    return BUILTIN.map((k) => ({ kind: k, builtin: true }))
+      .concat([...custom.entries()].map(([k, v]) => ({ kind: k, builtin: false, label: v.label, hint: v.hint, owner: v.owner })));
+  }
 
   // ---- storage ----------------------------------------------------------------
   function load(id) {
@@ -244,7 +261,16 @@ module.exports = function initWorkflows(ctx) {
         case "notify": out = execNotify(run, n); break;
         case "delay": return execDelay(run, n);         // resumes via timer
         case "output": out = await execOutput(run, n); break;
-        default: out = render(n.text, run, n.id);
+        default:
+          if (custom.has(n.type)) {
+            const { impl } = custom.get(n.type);
+            out = await impl({ ...n, text: render(n.text, run, n.id), raw: n.text }, {
+              run: { id: run.id, name: run.name, trigger: run.trigger }, render: (t) => render(t, run, n.id),
+              prev: render("{{prev}}", run, n.id), outputs: Object.fromEntries(Object.entries(run.nodes).map(([id, s]) => [id, s.output])),
+              agent: (agentId, prompt, o) => runAgent(agentId, prompt, { workflow: run.id, node: n.id, ...(o || {}) }),
+              notify: (item) => notify({ kind: "workflow", link: "workflow:" + run.id, ...(item || {}) }),
+            });
+          } else out = render(n.text, run, n.id);
       }
       finishNode(run, n.id, out);
     } catch (e) {
@@ -432,7 +458,7 @@ module.exports = function initWorkflows(ctx) {
 
   return { load, start, resume, resumeAll, cancel, runs, getRun: (id) => { const r = live.get(id) || readRun(id); return r ? summary(r) : null; },
            getRunFull: (id) => live.get(id) || readRun(id), render, parseDelay, decisionEdge, AGENT_TYPES,
-           TYPES: ["trigger", "action", "fetch", "decision", "approval", "notify", "delay", "output", "note"] };
+           registerNode, unregisterOwner, nodeTypes, TYPES: BUILTIN };
 };
 
 // A tiny http(s) client — no dependencies, no redirects beyond one hop.

@@ -29,7 +29,13 @@ node's top port to connect them.
 | 🔔 **Notify** | tell you, through your rules | the message |
 | ⏳ **Delay** | wait | `10m` · `2h 30m` · `30s` · `until 09:00` |
 | 📤 **Output** | record, write or send the result | plain text · `file:C:/path/out.md` · `channel: <text>` |
+| 🧑‍💻 **Codex** | hand a coding task to [Codex](codex.md) | the task · `cfg.project` picks the project (default: the workspace) · output `{ text, diff }` |
 | 📝 **Note** | a comment on the canvas | not run |
+
+Plugins can add node types of their own (they appear in the palette as soon
+as the plugin loads) and trigger kinds (in the ⚡ panel as `🧩 …`) — see
+[plugins → hooks](plugins.md#hooks). Every run is also a 🔀 card on the
+[task board](tasks.md).
 
 **Branches and joins.** A node with several outgoing arrows fans out and those
 branches run **at the same time**. A node with several incoming arrows **waits
@@ -76,7 +82,7 @@ runs:
 |---|---|---|
 | ⏰ **Schedule** | every N minutes, or daily at HH:MM | `{ event: "schedule" }` |
 | 🌐 **Webhook** | anything POSTs to `http://127.0.0.1:8787/hook/<token>` | the JSON body; the `X-GitHub-Event` header becomes `event` |
-| 📡 **Event** | an office event of that type — `task.completed`, `proposal.created`, a plugin's own | the event |
+| 📡 **Event** | an office event of that type — `task.completed`, `work.created` (a new card), `proposal.created`, a plugin's own | the event |
 | 📁 **File** | a file matching the pattern appears or changes in a folder | `{ path, name, change, size }` |
 | 💬 **Channel** | a message on Telegram / Discord / LINE / … starts with the keyword | `{ channel, from, text, rest }` |
 

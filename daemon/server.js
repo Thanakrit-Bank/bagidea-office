@@ -1300,6 +1300,7 @@ function auxCost(provider, usd) {
 const BRAIN_PRICES = {
   glm: [0.6, 2.2], deepseek: [0.28, 1.1], qwen: [0.4, 1.2], minimax: [0.3, 1.2],
   openai: [2.5, 10], gemini: [0.15, 0.6], openrouter: [1, 3], nvidia: [0, 0],
+  codex: [1.25, 10],   // 🧑‍💻 Codex runs on the owner's OpenAI plan or key — an estimate, labelled as one
 };
 // Accumulate a swapped-in brain's token spend under stats[day].brains[provider].
 function brainBump(provider, inTok, outTok, agent, projId) {
@@ -1343,7 +1344,21 @@ function nextJobId() {
   return id;
 }
 let notes = loadJson(NOTES, []);  // {id, who, text, ts}
-let cal = loadJson(CAL, []);      // {id, title, at, remindMin, notified}
+// 📅 The calendar is a module now (v1.4): recurrence, all-day events, ICS in/out,
+// reminders per occurrence. calendar.json on disk is the same file it always was.
+const calendar = require("./calendar")({
+  file: CAL, broadcast, log: (m) => console.log(m),
+  remind: (ev, occ) => {
+    broadcast({ type: "reminder", agent: "main", text: ev.title, at: occ.at });
+    try { notify.send({ kind: "reminder", title: "📅 " + ev.title, body: new Date(occ.at).toLocaleString() + (occ.minutes ? ` · in ${occ.minutes} min` : ""), link: "calendar:" + ev.id, agent: ev.agent || undefined }); } catch {}
+    runClaude("main",
+      `Remind the CEO right now about this appointment: "${ev.title}" at ` +
+      `${new Date(occ.at).toLocaleString()} (in about ${Math.max(1, occ.minutes)} minutes)` +
+      (ev.notes ? `. Notes: ${String(ev.notes).slice(0, 300)}` : "") +
+      `. Write a short, friendly reminder of 1–2 sentences, in the office language.` + officeLangNote(),
+      { noSub: true, logPrompt: `🔔 เตือนนัด: ${ev.title}` });
+  },
+});
 // Clean up one-shot jobs that already fired (no `running` survives a restart) —
 // run-now or one-time scheduled orders have nothing left to do, so they should
 // not linger as dead, uneditable rows.
@@ -1356,7 +1371,6 @@ let cal = loadJson(CAL, []);      // {id, title, at, remindMin, notified}
   if (jobs.length !== _n) fs.writeFileSync(JOBS, JSON.stringify(jobs, null, 2));
 }
 const saveJobs = () => fs.writeFileSync(JOBS, JSON.stringify(jobs, null, 2));
-const saveCal = () => fs.writeFileSync(CAL, JSON.stringify(cal, null, 2));
 
 // The note board lives twice: notes.json for the UI, notes.md inside the
 // agents' workspace so they can READ it and APPEND bullets themselves.
@@ -1747,42 +1761,45 @@ function sweepProjects() {
 // Every agent knows the project map — say a project's name in chat and
 // they work its real directory, full authority, summary on finish.
 function projectNote() {
+  const codexNote = typeof codex !== "undefined" ? codex.agentNote() : "";
   if (!projects.length && !Object.keys(reg.places).length &&
-      !Object.keys(reg.apiKeys || {}).length && !featuresMap().image) return "";
+      !Object.keys(reg.apiKeys || {}).length && !featuresMap().image && !codexNote) return "";
   const keysLine = Object.keys(reg.apiKeys || {}).length
-    ? `\nAPI keys ที่ตั้งค่าไว้ใน env ของคุณแล้ว (เรียกใช้ได้ทันที): ${Object.keys(reg.apiKeys).join(", ")}`
+    ? `\nAPI keys already set in your environment (usable right away): ${Object.keys(reg.apiKeys).join(", ")}`
     : "";
-  const sysTools = featuresMap().image ? `
-เครื่องมือกลางของออฟฟิศ (เรียกผ่าน Bash ได้เลย):
-- 🖼 สร้างภาพ AI: curl -s -X POST http://127.0.0.1:8787/gen/image -H "content-type: application/json" -d "{\\"prompt\\":\\"<english prompt>\\"}"
-  → ได้ {"path": "..."} — ใส่ path นั้นในคำตอบ แชทของเจ้าของจะแสดงรูปอัตโนมัติ
-- ✏️ แก้ภาพเดิม: curl -s -X POST http://127.0.0.1:8787/gen/image/edit -H "content-type: application/json" -d "{\\"url\\":\\"/uploads/<file>.png\\",\\"prompt\\":\\"<english instruction>\\"}"
-  → ได้ไฟล์ใหม่ ภาพเดิมไม่ถูกทับ ทำซ้ำหลายรอบได้
-  (🎬 วิดีโอมีในห้อง Media Studio — เจ้าของกดเองเท่านั้น เพราะคิดเงินต่อคลิป)` : "";
+  const sysTools = (featuresMap().image || codexNote) ? `
+Office-wide tools (call them from Bash):` + (featuresMap().image ? `
+- 🖼 Generate an image: curl -s -X POST http://127.0.0.1:8787/gen/image -H "content-type: application/json" -d "{\\"prompt\\":\\"<english prompt>\\"}"
+  → returns {"path": "..."} — put that path in your reply and the owner's chat shows the picture.
+- ✏️ Edit an existing image: curl -s -X POST http://127.0.0.1:8787/gen/image/edit -H "content-type: application/json" -d "{\\"url\\":\\"/uploads/<file>.png\\",\\"prompt\\":\\"<english instruction>\\"}"
+  → a new file; the original is kept, so you can iterate.
+  (🎬 video lives in the Media Studio — the owner runs it there; it is billed per clip)` : "") + codexNote : "";
   // Cap to the 12 most-recent projects so the note stays bounded as they pile up
   // (the full list is always one GET /registry away).
   const recent = projects.slice(-12);
-  const more = projects.length > recent.length ? `\n(…อีก ${projects.length - recent.length} โปรเจค — ดูทั้งหมดที่ GET /registry)` : "";
-  const list = (recent.map((p) => `- ${p.name} → ${p.dir}`).join("\n") || "(ยังไม่มี)") + more;
+  const more = projects.length > recent.length ? `\n(…${projects.length - recent.length} more — see them all at GET /registry)` : "";
+  const list = (recent.map((p) => `- ${p.name} → ${p.dir}`).join("\n") || "(none)") + more;
   const places = Object.entries(reg.places)
-    .map(([n, f]) => `- "${n}" → ${f}`).join("\n") || "(ไม่มี)";
+    .map(([n, f]) => `- "${n}" → ${f}`).join("\n") || "(none)";
   return `
 
 <office-projects>
-โปรเจคที่ลงทะเบียนในออฟฟิศ:
+Projects registered in the office:
 ${list}
-สถานที่เก็บโปรเจค (ชื่อย่อ):
+Places where projects live (short names):
 ${places}
-เมื่อผู้ใช้อ้างถึงโปรเจคเหล่านี้ ให้ทำงานกับไฟล์ใน path ของมันโดยตรงทันที —
-คุณมีอำนาจตัดสินใจเต็มที่ในงานที่ได้รับมอบ ทำเสร็จแล้วต้องสรุปผลให้ผู้สั่งงานชัดเจน.
-สำคัญ: เช็ครายการข้างบนก่อนเสมอ — โปรเจคที่มีอยู่แล้ว "ห้ามลงทะเบียนซ้ำ" และห้ามใช้
-โฟลเดอร์ของ place เป็น path โปรเจคโดยตรง (ระบบจะปฏิเสธ).
-ห้ามเด็ดขาด: ลบ/ถอดโปรเจคออกจากรายการ (API remove/removeDisk) เว้นแต่ผู้ใช้สั่งเองชัดๆ.
-การทดสอบใดๆ (เช่น เว็บ) ให้ใช้วิธีเบื้องหลังก่อนเสมอ (curl / headless / สคริปต์)
-อย่าเปิดหน้าต่างรบกวนผู้ใช้; ถ้าจำเป็นต้องเปิดจริงๆ จนไม่มีทางอื่น ให้รันคำสั่งเปิดตรงๆ
-แล้วระบบ Security จะขอ allow จากผู้ใช้ให้เอง.
-กฎเหล็ก: server/process ทุกตัวที่คุณเปิดเพื่อทดสอบ (dev server, next start, ฯลฯ)
-ต้องปิดให้หมดก่อนจบงาน — ห้ามทิ้งโปรเซสค้างไว้ในเครื่องผู้ใช้เด็ดขาด.${keysLine}${sysTools}${
+When the owner refers to one of these projects, work directly on the files at its path, right away —
+you have full authority over the work you were given; when done, summarize the result clearly for
+whoever ordered it.
+Important: always check the list above first — an existing project must NOT be registered again, and a
+place's folder must not be used directly as a project path (the office refuses it).
+Absolutely never: remove or unregister a project (the API's remove/removeDisk) unless the owner
+explicitly asks.
+Any testing (a website, say) goes through a background method first (curl / headless / a script);
+do not open windows that disturb the owner. If opening one is truly unavoidable, run the command
+plainly and the Security Center will ask the owner to allow it.
+Iron rule: every server or process you start for testing (dev server, next start, …) must be shut
+down before you finish — never leave a process running on the owner's machine.${keysLine}${sysTools}${
   (typeof plugins !== "undefined" && plugins.agentNote()) || ""}
 </office-projects>`;
 }
@@ -1815,6 +1832,14 @@ function dispatchJob(job) {
   saveJobs();
   broadcast({ type: "job.started", agent: job.agent, title: job.prompt.slice(0, 60), job: job.id });
   broadcast({ type: "jobs.changed" }, false);
+  // 📋 The board shows a fired job as a card in "doing" (one card per job; a
+  // repeating job's card comes back to doing on every run).
+  let jobCard = null;
+  try {
+    jobCard = tasks.bySource("job", job.id);
+    if (jobCard) tasks.move(jobCard.id, "doing");
+    else jobCard = tasks.create({ title: "🔁 " + job.prompt.slice(0, 120), detail: job.prompt, kind: "job", owner: job.agent, status: "doing", source: { kind: "job", ref: job.id } });
+  } catch (e) { console.error("[tasks] job card", e && e.message); }
   // A repeating order (every-N, or a daily time) stays; a one-shot (run-now or a
   // one-time scheduled time) has nothing left to do once it finishes — so it's
   // removed instead of lingering as a dead, uneditable row.
@@ -1844,9 +1869,10 @@ function dispatchJob(job) {
     },
     // The lane frees when this turn ends — a hand-off or an AUTO chain can outlive
     // it, and holding the slot open would wedge every other scheduled job behind it.
-    onDone: autoContinue(job.agent, undefined, keyRef, () => {
+    onDone: autoContinue(job.agent, undefined, keyRef, (out, ok) => {
       agentBusy.delete(job.agent);
       job.running = false;
+      if (jobCard) { try { if (oneShot || ok) tasks.move(jobCard.id, "done"); else tasks.move(jobCard.id, "waiting"); if (oneShot) tasks.remove(jobCard.id); } catch {} }
       if (oneShot) jobs = jobs.filter((j) => j.id !== job.id);
       saveJobs();
       broadcast({ type: "jobs.changed" }, false);
@@ -1854,6 +1880,37 @@ function dispatchJob(job) {
       if (next) dispatchJob(next);
     }, director, dele),
   });
+}
+
+// One place a standing order is born — the route and ctx.schedule() for plugins.
+function createJob(p) {
+  if (!p.agent || !reg.agents[p.agent] || p.agent === "ceo") throw new Error("bad agent");
+  if (!p.prompt) throw new Error("no prompt");
+  const job = {
+    id: nextJobId(),
+    agent: p.agent,
+    prompt: String(p.prompt).slice(0, 4000),
+    mode: ["now", "at", "every"].includes(p.mode) ? p.mode : "now",
+    at: Number(p.at) || 0,
+    time: String(p.time || "").slice(0, 5),
+    daily: !!p.daily,
+    everyMin: Math.max(5, Number(p.everyMin) || 10),  // floor: 5 min
+    // Honour a caller that asks for a job to land switched OFF. This is the
+    // only way to queue work that waits for a human to approve it, and it
+    // used to be impossible: the field was hardcoded true.
+    enabled: p.enabled === false ? false : true,
+    created: Date.now(),
+  };
+  jobs.push(job);
+  saveJobs();
+  if (!job.enabled) approvals.ask({ kind: "job", ref: job.id, agent: job.agent,
+    title: `Job for ${(reg.agents[job.agent] || {}).name || job.agent}: ${job.prompt.slice(0, 80)}`,
+    detail: job.prompt });
+  // ...and don't fire a "now" job that was created disabled. dispatchJob()
+  // itself never consults .enabled — only the scheduler's jobDue() does,
+  // and that never looks at mode:"now" — so this is the only gate there is.
+  if (job.mode === "now" && job.enabled) dispatchJob(job);
+  return job;
 }
 
 function jobDue(job, now) {
@@ -1878,24 +1935,25 @@ let lastHeartbeat = Date.now();
 let lastHbSig = null;
 function heartbeat() {
   lastHeartbeat = Date.now();
-  const upcoming = cal.filter((c) => c.at > Date.now() && c.at < Date.now() + 12 * 3600000)
-    .sort((a, b) => a.at - b.at).slice(0, 6)
-    .map((c) => `- ${c.title} @ ${new Date(c.at).toLocaleString("th-TH")}`).join("\n") || "(ว่าง)";
+  const upcoming = calendar.occurrences(Date.now(), Date.now() + 12 * 3600000, { limit: 6 })
+    .map((c) => `- ${c.title} @ ${new Date(c.at).toLocaleString()}`).join("\n") || "(none)";
   const standing = jobs.filter((j) => !j.done && j.enabled !== false).slice(0, 8)
-    .map((j) => `- [${j.mode}] ${j.agent}: ${j.prompt.slice(0, 60)}`).join("\n") || "(ไม่มี)";
-  const board = notes.slice(-8).map((n) => `- ${n.text}`).join("\n") || "(ว่าง)";
+    .map((j) => `- [${j.mode}] ${j.agent}: ${j.prompt.slice(0, 60)}`).join("\n") || "(none)";
+  const board = notes.slice(-8).map((n) => `- ${n.text}`).join("\n") || "(none)";
+  const ts = tasks.summary();
+  const work = `${ts.open} open · ${ts.doing} in progress · ${ts.waiting} waiting · ${ts.overdue} overdue · ${ts.dueToday} due today`;
   // Nothing the Director reports on (calendar / jobs / notes) has changed since
   // his last pass → he'd just say "OK" again. Skip the spawn entirely.
-  const sig = `${upcoming}${standing}${board}`;
+  const sig = `${upcoming}${standing}${board}${work}`;
   if (sig === lastHbSig) return;
   lastHbSig = sig;
   runClaude("main",
-    `รอบตรวจความเรียบร้อยของ Director (ตอนนี้ ${new Date().toLocaleString("th-TH")}):\n\n` +
-    `นัดหมาย 12 ชม.ข้างหน้า:\n${upcoming}\n\nงานที่สั่งค้างไว้:\n${standing}\n\n` +
-    `กระดานโน้ต:\n${board}\n\n` +
-    `ถ้ามีสิ่งที่ CEO ควรรู้ตอนนี้ (นัดใกล้ถึง งานสะดุด โน้ตที่ควรเห็น) ` +
-    `ให้เขียนข้อความแจ้งสั้นๆ อ่านง่าย. ถ้าทุกอย่างเรียบร้อยและไม่มีอะไรต้องรบกวน ` +
-    `ให้ตอบคำเดียวว่า OK`,
+    `Director's routine check (now ${new Date().toLocaleString()}):\n\n` +
+    `Appointments in the next 12 hours:\n${upcoming}\n\nStanding orders:\n${standing}\n\n` +
+    `Task board: ${work}\n\nNotes board:\n${board}\n\n` +
+    `If there is something the CEO should know right now (an appointment coming up, work that stalled, ` +
+    `an overdue card, a note worth seeing), write a short, easy-to-read message in the office language. ` +
+    `If everything is in order and nothing needs their attention, answer with the single word OK.` + officeLangNote(),
     { noSub: true, logPrompt: "💓 รอบตรวจความเรียบร้อย",
       filterText: (t) => (/^\s*OK\.?\s*$/i.test(t) ? "" : t) });
 }
@@ -1922,8 +1980,8 @@ function resumePausedTick(now) {
     broadcast({ type: "chat.message", agent: w.agent,
       text: "▶ โควต้าน่าจะคืนแล้ว — ขอทำงานที่ค้างไว้ต่อจากเดิมนะครับ" });
     runClaude(w.agent,
-      "ทำงานต่อจากที่ค้างไว้ก่อนหน้า (ก่อนหน้านี้สะดุดเพราะติดลิมิตชั่วคราว/โปรแกรมรีสตาร์ท). " +
-      "ดูบริบทในเธรดนี้แล้วทำงานที่ยังไม่เสร็จให้จบ:\n\n" + String(w.prompt || ""),
+      "Continue the work that was left unfinished (it was interrupted by a temporary limit or a restart of the program). " +
+      "Read the context in this thread and finish what is not yet done:\n\n" + String(w.prompt || ""),
       { session: w.key, project: w.project, resumable: true, _tries: w.tries,
         resumePrompt: w.prompt, logPrompt: "▶ ทำงานต่อ (resume)",
         // Same defect as the job runner had: a resumed Director turn that hands
@@ -1948,18 +2006,8 @@ setInterval(() => {
       dispatchJob(job);
     }
   }
-  for (const c of cal) {
-    if (!c.notified && now >= c.at - (c.remindMin || 10) * 60000 && now < c.at + 300000) {
-      c.notified = true;
-      saveCal();
-      broadcast({ type: "reminder", agent: "main", text: c.title, at: c.at });
-      runClaude("main",
-        `แจ้งเตือนนัดหมายให้ CEO เดี๋ยวนี้: "${c.title}" เวลา ` +
-        `${new Date(c.at).toLocaleString("th-TH")} (อีกประมาณ ${Math.max(1, Math.round((c.at - now) / 60000))} นาที). ` +
-        `เขียนข้อความเตือนสั้นๆ เป็นกันเอง 1-2 ประโยค`,
-        { noSub: true, logPrompt: `🔔 เตือนนัด: ${c.title}` });
-    }
-  }
+  try { calendar.tick(now); } catch (e) { console.error("[calendar] tick", e && e.message); }
+  try { tasks.tick(now); } catch (e) { console.error("[tasks] tick", e && e.message); }
   const hb = ecoFloor(Number(reg.heartbeatMin || 0), 180);
   if (hb > 0 && now - lastHeartbeat >= hb * 60000 && agentBusy.size === 0)
     heartbeat();
@@ -2329,8 +2377,14 @@ Despite the harness system prompt, this turn you are actually running on the bac
 model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully with
 "${mtag}" — NOT Claude/Anthropic. Otherwise stay in character as usual.
 </runtime-identity>` : "";
-  child.stdin.write(preamble + prompt + (canSplit ? SUB_NOTE : "") + VOICE_NOTE + mediaNote + TOOLS_NOTE + BRAIN_NOTE + projectNote());
-  child.stdin.end();
+  // v1.4: every agent knows the task board; memory plugins the agent opted into
+  // add their lines (the core owns the timeout and budget — see plugins.memoryLines).
+  const tailNotes = (canSplit ? SUB_NOTE : "") + VOICE_NOTE + mediaNote + TOOLS_NOTE + BRAIN_NOTE + projectNote() +
+    (agent !== "ceo" && typeof tasks !== "undefined" ? tasks.agentNote(agent) : "");
+  const feedStdin = (mem) => { try { child.stdin.write(preamble + prompt + (mem || "") + tailNotes); child.stdin.end(); } catch (e) { console.error("[run] stdin:", e && e.message); } };
+  if (typeof plugins !== "undefined" && plugins.memoryPlugins().length)
+    plugins.memoryLines(agent, { project: projId, prompt: String(prompt).slice(0, 500) }).then(feedStdin, () => feedStdin(""));
+  else feedStdin("");
 
   let buf = "";
   const acts = [];      // tool trail — feeds the auto-skill reflection
@@ -2706,9 +2760,16 @@ function teamList() {
 // in his own pane works exactly like an order through the CEO.
 function directorNote() {
   const places = Object.entries(reg.places)
-    .map(([n, f]) => `  - "${n}" → ${f}`).join("\n") || "  (ยังไม่มี — ผู้ใช้ตั้งได้ใน 🗂)";
+    .map(([n, f]) => `  - "${n}" → ${f}`).join("\n") || "  (none yet — the owner sets them in 🗂)";
   const projList = projects.slice(-8)
-    .map((p) => `  - ${p.name} → ${p.dir}`).join("\n") || "  (ยังไม่มี)";
+    .map((p) => `  - ${p.name} → ${p.dir}`).join("\n") || "  (none yet)";
+  const codexLine = (typeof codex !== "undefined" && codex.agentNote()) ? `
+
+CODEX — a second coding agent the office can call in. For a self-contained coding sub-task that
+suits it (when the owner asks for Codex, or when a parallel pair of hands on code is worth it), write:
+DELEGATE: codex @ <project name> :: <clear, self-contained task>
+The office runs Codex inside that project (it may edit files there) and reports its result back to
+you like a teammate's. You stay responsible for reviewing what it did.` : "";
   return `
 
 <system-capability>
@@ -2728,30 +2789,36 @@ One line per assignment — dispatched automatically; their result is reported
 back to you when they finish, so you can answer questions or follow up.
 IMPORTANT: prose like assigning work in words does NOTHING — only the
 DELEGATE line dispatches work.
-เฉพาะเมื่องานที่มอบมีส่วนอิสระหลายส่วนที่ทำขนานกันได้จริงและคุ้มค่า (เช่น ค้นคว้าหลายหัวข้อพร้อมกัน,
-ตรวจหลายไฟล์ที่ไม่เกี่ยวกัน) จึงค่อยสั่งผู้รับ "แตกร่าง" — งานทั่วไปให้ผู้รับทำตรงๆ จะประหยัดกว่า. ตัวอย่างกรณีที่ควรแตก:
-DELEGATE: <agent_id> :: ค้นคว้า A, B, C แบบขนาน — จบคำตอบด้วยบรรทัด SUB: ทีละหัวข้อ.
+Only when a task has several genuinely independent parts worth running in parallel (researching several
+topics at once, checking unrelated files) should you tell the assignee to "split into sub-agents" —
+ordinary work is cheaper done directly. An example of a task worth splitting:
+DELEGATE: <agent_id> :: research A, B and C in parallel — end your answer with one SUB: line per topic.
 
-PROJECT SYSTEM — registered places (ชื่อย่อ → โฟลเดอร์):
+PROJECT SYSTEM — registered places (short name → folder):
 ${places}
 Existing projects:
 ${projList}
-เมื่อผู้ใช้สั่งสร้างโปรเจคใหม่ (เช่น "สร้างโปรเจค test ที่ห้องสมุด") คุณต้องสร้างเอง
-ด้วยบรรทัด protocol นี้ (ระบบสร้าง+ลงทะเบียนให้ทันที):
-PROJECT: <ชื่อโปรเจค> @ <ชื่อ place หรือ full path>
-แล้วค่อยมอบงานแบบระบุโปรเจค: DELEGATE: <agent_id> @ <ชื่อโปรเจค> :: <งาน>
-สำคัญมาก: ห้ามสั่งให้สมาชิกไปสร้างโปรเจคเอง และห้ามทำงานของโปรเจคนอกบรรทัด DELEGATE @ —
-ไม่งั้นงานจะไม่ได้รันอยู่ "ข้างใน" โปรเจคจริงๆ (เจ้าของ resume session ต่อไม่ได้).
-ห้ามสร้างโปรเจคเองโดยผู้ใช้ไม่ได้สั่ง
+When the owner asks for a new project (e.g. "create project test in the library"), YOU create it,
+with this protocol line (the office creates and registers it at once):
+PROJECT: <project name> @ <place name or full path>
+then hand out the work routed to that project: DELEGATE: <agent_id> @ <project name> :: <task>
+Very important: never tell a member to create the project themselves, and never do a project's work
+outside a DELEGATE @ line — otherwise the work does not actually run "inside" the project (the owner
+cannot resume the session). Never create a project the owner did not ask for.
 
-DEFINITION OF DONE — งานจะ "เสร็จ" ก็ต่อเมื่อผลของมัน "มีผลจริงในระบบที่รันอยู่" และคุณ
-verify แล้วเท่านั้น — ไม่ใช่แค่ "เขียนไฟล์เสร็จ". ก่อนรายงานเจ้าของว่าเสร็จ ให้ยืนยันว่าการ
-เปลี่ยนแปลงถูกนำไปใช้จริง (ของที่ build/แก้ในโปรเจคหรือ mirror ยังไม่มีผลจนกว่าจะถูก deploy ไป
-ที่ที่ระบบโหลดจริง + reload + เช็คว่าเวอร์ชัน/พฤติกรรมที่รันอยู่ตรงกับที่ทำ). โดยเฉพาะ plugin:
-มันรันจาก plugins/<id>/ เท่านั้น — ถ้าทีม build/แก้ที่อื่น ต้อง copy เข้า plugins/<id> (ห้ามทับ
-data/), reload, แล้วเช็ค GET /plugins ว่าขึ้นเวอร์ชันใหม่ + log ไม่มี load fail ก่อนถือว่าเสร็จ
-(ใช้ skill "Plugin Builder"). "สร้างเสร็จ" ≠ "กำลังรันอยู่". การ push ขึ้น git/Hub เป็นขั้นแยก
-ที่ต้องให้เจ้าของอนุมัติเสมอ ไม่ถือว่าเป็นส่วนของ "เสร็จ" โดยอัตโนมัติ
+TASK BOARD — every delegation becomes a card on the office board (📋 TASKS), owned by the assignee,
+and moves to done when they finish. When the owner asks what is going on, the board is the answer:
+GET http://127.0.0.1:8787/tasks/board. You can add a card yourself with POST /tasks (see office-tasks).
+
+DEFINITION OF DONE — work is "done" only when its result "has taken effect in the running system" and
+you have verified it — not merely "the files are written". Before reporting to the owner that something
+is done, confirm the change is actually in use (something built or edited in a project or a mirror has
+no effect until it is deployed to where the system really loads it, reloaded, and the running
+version/behaviour checked against what was made). Plugins in particular: they run from plugins/<id>/
+only — if the team built or edited elsewhere, copy it into plugins/<id> (never over data/), reload, then
+check GET /plugins shows the new version and the log has no load failure before calling it done (use the
+"Plugin Builder" skill). "Built" ≠ "running". Pushing to git or the Hub is a separate step that always
+needs the owner's approval and is never part of "done" by default.${codexLine}
 </system-capability>`;
 }
 
@@ -2818,14 +2885,16 @@ function pumpDirector() {
 const DELEGATE_NOTE = `
 
 <work-autonomy>
-นี่คืองานที่ Director มอบให้คุณทำ "จนจบ" — ไม่ใช่ทำก้าวแรกแล้วหยุดรอคำสั่งถัดไป.
-ทำให้ครบทุกขั้นด้วยตัวเองจนเสร็จจริงและ verify แล้ว: วางแผนย่อยเอง, ตัดสินใจรายละเอียดที่อยู่ใน
-ขอบเขตความเชี่ยวชาญ/บทบาทของคุณได้เลยโดยไม่ต้องถามกลับ, เจอทางเลือกเล็กๆ ให้เลือกอย่างสมเหตุสมผล
-แล้วเดินหน้าต่อ. หยุดเพื่อ "ถามกลับ Director" เฉพาะเมื่อจำเป็นจริงๆ 3 กรณีเท่านั้น:
-(ก) ขาด credential/สิทธิ์เข้าถึงที่หาเองไม่ได้, (ข) โจทย์กำกวมจนถ้าเดาผิดผลจะออกผิดทางไปเลย,
-(ค) ต้องทำสิ่งที่ย้อนกลับยาก/ส่งออกนอก (push git หรือ Hub, ลบของ, ส่งข้อความออกภายนอก, ใช้จ่ายเงิน)
-ซึ่งต้องให้เจ้าของอนุมัติก่อนเสมอ. เมื่อทำเสร็จให้รายงานผลที่เสร็จจริง — ไม่ใช่รายงานความคืบหน้ากลางคัน.
-ถ้าติดตามข้อยกเว้นข้างบน ให้รายงานสั้นๆ ว่าติดตรงไหนและต้องการอะไร แล้วรอ.
+This is work the Director handed to you to carry THROUGH TO THE END — not "do the first step and
+wait for the next instruction". Complete every step yourself until it is genuinely done and verified:
+break it down on your own, make the detailed decisions that fall within your expertise and role without
+asking back, and when you meet a small fork, pick the reasonable option and keep going. Stop to ask the
+Director back only when it is truly necessary — exactly three cases:
+(a) a credential or access you cannot obtain yourself; (b) the task is so ambiguous that a wrong guess
+would send the result the wrong way entirely; (c) something hard to reverse or outward-facing (pushing to
+git or the Hub, deleting things, sending a message outside, spending money), which always needs the
+owner's approval first. When you finish, report the result that is actually done — not mid-way progress.
+If one of the exceptions above blocks you, report briefly what blocks you and what you need, then wait.
 In short: own the task end-to-end, decide within your remit, only ask back when truly blocked.
 </work-autonomy>`;
 
@@ -2948,6 +3017,24 @@ function makeDelegateFilter(depth, session, onHit) {
       // DELEGATE: <agent> :: <job>   — or, routed into a workspace:
       // DELEGATE: <agent> @ <project name> :: <job>
       const m = ln.match(/^\s*DELEGATE:\s*([^:@]+?)(?:\s*@\s*([^:]+?))?\s*::\s*(.+)$/);
+      // 🧑‍💻 DELEGATE: codex @ <project> :: <task> — the office runs Codex inside that
+      // project and reports back like a teammate's result. Only when Codex is here.
+      if (m && /^codex$/i.test(m[1].trim()) && codex.detect().installed && codex.settings().enabled) {
+        const inst = m[3].trim(), projName = (m[2] || "").trim();
+        if (onHit) onHit();
+        notifyChannels(`🧑‍💻 → Codex${projName ? " @ " + projName : ""}: ${inst.slice(0, 200)}`);
+        let card = null;
+        try { card = tasks.create({ title: "🧑‍💻 " + inst.slice(0, 120), detail: inst, kind: "delegation", owner: "main", project: projName, status: "doing", source: { kind: "codex", ref: session || "" } }); } catch {}
+        Promise.resolve().then(() => codexMission("exec", { task: inst, project: projName }, "main"))
+          .then((r) => {
+            if (card) { try { tasks.move(card.id, r.ok ? "done" : "waiting"); } catch {} }
+            const text = (r.ok ? r.text : ("Codex failed: " + (r.error || "unknown error") + (r.text ? "\n" + r.text : ""))) +
+              (r.diff && r.diff.files ? `\n\n[changes in ${r.diff.project || projName || "the workspace"}: ${r.diff.files} file(s) — ${r.diff.summary || ""}]` : "\n\n[no file changes]");
+            reportToMain("codex", text, !!r.ok, depth, session);
+          })
+          .catch((e) => { if (card) { try { tasks.move(card.id, "waiting"); } catch {} } reportToMain("codex", "Codex could not run: " + (e && e.message), false, depth, session); });
+        continue;
+      }
       // Accept the agent id OR its display name (models love names).
       let tgt = null;
       if (m) {
@@ -2978,10 +3065,14 @@ function makeDelegateFilter(depth, session, onHit) {
           // agent must NOT enter it — report back so the Director re-plans
           // (and the two never collide inside one working tree).
           if (proj && projWin[proj]) {
-            reportToMain(t, `โปรเจค "${projName || proj}" เจ้าของกำลังเปิดทำงานอยู่ — ` +
-              `เข้าไปทำตอนนี้ไม่ได้ รอจนเจ้าของปิดหน้าต่างก่อน`, false, depth, session);
+            reportToMain(t, `The owner currently has project "${projName || proj}" open in a window — ` +
+              `it cannot be entered right now; wait until the owner closes that window.`, false, depth, session);
             return;
           }
+          // 📋 A delegation is a card on the board, owned by the assignee, from
+          // "doing" to "done" (or "waiting" when the task failed and needs a human).
+          let card = null;
+          try { card = tasks.create({ title: inst.replace(/\s+/g, " ").slice(0, 120), detail: inst, kind: "delegation", owner: t, project: proj ? ((projects.find((p) => p.id === proj) || {}).name || proj) : "", status: "doing", source: { kind: "delegation", ref: (session || "") + ":" + Date.now() } }); } catch {}
           const tl = sess[t] || [];
           const te = tl.length ? tl.reduce((a, b) => (a.ts > b.ts ? a : b)) : null;
           // Carry the autonomy mandate on both the first run AND any auto-resume.
@@ -2993,7 +3084,10 @@ function makeDelegateFilter(depth, session, onHit) {
             // new thread only when the agent's latest one lives elsewhere.
             session: proj ? ((!te || te.proj !== proj) ? "new" : undefined) : "new",
             resumable: true, resumePrompt: dinst,   // delegated work auto-resumes after a limit/restart
-            onDone: (out, ok) => verifyThenReport(t, inst, out, ok, depth, session, proj),
+            onDone: (out, ok) => {
+              if (card) { try { tasks.move(card.id, ok ? "done" : "waiting"); } catch {} }
+              verifyThenReport(t, inst, out, ok, depth, session, proj);
+            },
           });
         }, 4500);
       } else keep.push(ln);
@@ -3848,6 +3942,55 @@ const budget = require("./budget")({
 // same engine, the same permission broker, the same budget gate — and its final
 // text is the step's output. The Director gets DELEGATE power on a step, as on a
 // job; anyone else works alone.
+// 📋 Work items (v1.4, design F): one board behind cards the owner writes,
+// delegations, fired jobs, meeting action items and workflow runs.
+const tasks = require("./tasks")({
+  file: path.join(WORKSPACE, "tasks.json"), broadcast, log: (m) => console.log(m),
+  notify: (n) => notify.send(n), agentName: (id) => (reg.agents[id] || {}).name || id,
+});
+// 🧑‍💻 Codex as a system tool (v1.4, design G2). Never the brain: the agent that
+// calls it keeps its persona, memory, permissions and budget line.
+const codex = require("./codex")({
+  reg, saveReg, broadcast, log: (m) => console.log(m),
+  onUsage: (agent, project, inTok, outTok) => brainBump("codex", inTok, outTok, agent, project || null),
+  // 👻 GHOST ISOLATION applies unchanged: with it on, Codex works in its own checkout
+  // and its edits arrive as a branch to merge.
+  isolate: (dir, id) => {
+    if (reg.ghostWorktrees !== true) return null;
+    const wt = worktree.create(dir, "codex-" + id);
+    return wt ? { dir: wt.dir, settle: () => worktree.settle(wt, "codex " + id) } : null;
+  },
+});
+// Which directory a codex call may work in: a registered project (by name or id),
+// a path that IS a registered project, or the shared workspace. Never elsewhere —
+// the office's own scope, not the whole disk.
+function codexDir(project) {
+  const p = String(project || "").trim();
+  if (!p) return { dir: WORKSPACE, project: "" };
+  const byName = projectByName(p) || projects.find((x) => x.id === p);
+  if (byName) return { dir: byName.dir, project: byName.id };
+  const norm = path.resolve(p).toLowerCase();
+  const byDir = projects.find((x) => path.resolve(x.dir).toLowerCase() === norm);
+  if (byDir) return { dir: byDir.dir, project: byDir.id };
+  if (norm.startsWith(path.resolve(WORKSPACE).toLowerCase())) return { dir: path.resolve(p), project: "" };
+  throw new Error(`"${p}" is not a registered project — codex works inside registered projects or the workspace`);
+}
+// A Codex run is a mission row like any other headless turn (🧑‍💻 at the desk).
+function codexMission(kind, o, agent) {
+  const target = codexDir(o.project);
+  const tid = "cx" + Date.now().toString(36);
+  const title = "🧑‍💻 Codex" + (kind === "review" ? " review" : "") + ": " + String(o.task || o.instructions || target.project || "").replace(/\s+/g, " ").slice(0, 70);
+  broadcast({ type: "task.started", agent, task: tid, title });
+  const p = kind === "review"
+    ? codex.review({ dir: target.dir, project: target.project, agent, base: o.base, commit: o.commit, instructions: o.instructions, model: o.model })
+    : codex.exec({ task: o.task, dir: target.dir, project: target.project, agent, sandbox: o.sandbox, model: o.model, images: o.images, isolate: !!target.project });
+  return p.then((r) => {
+    broadcast({ type: r.ok ? "task.completed" : "task.failed", agent, task: tid });
+    if (target.project) broadcast({ type: "project.touched", project: target.project }, false);
+    return r;
+  });
+}
+
 const workflows = require("./workflows")({
   dir: path.join(WORKSPACE, "workflows"),
   examplesDir: path.join(__dirname, "workflow-examples"),
@@ -3871,7 +4014,29 @@ const workflows = require("./workflows")({
   }),
 });
 const triggers = require("./triggers")({ reg, saveReg, workflows, log: (s) => console.log(s) });
-onBroadcastHook = (evt) => triggers.onEvent(evt);
+// 🧑‍💻 The codex workflow node: the step's text is the task, cfg.project picks where.
+workflows.registerNode("codex", async (n, h) => {
+  const r = await codexMission("exec", { task: n.text, project: (n.cfg && n.cfg.project) || "", sandbox: n.cfg && n.cfg.sandbox }, "main");
+  if (!r.ok) throw new Error(r.error || "codex failed");
+  return { text: r.text, diff: r.diff };
+}, { label: "🧑‍💻 Codex", hint: "a self-contained coding task for Codex · set cfg.project or it works in the workspace" });
+// A workflow run is a card on the board too (kind "workflow"), so the owner sees
+// what is running without opening the Builder.
+function syncWorkflowCard(run) {
+  if (!run || !run.id) return;
+  try {
+    const card = tasks.bySource("workflow", run.id);
+    if (!card) { if (run.state === "running") tasks.create({ title: "🔀 " + run.name, kind: "workflow", owner: "main", status: "doing", source: { kind: "workflow", ref: run.id } }); return; }
+    if (run.state === "done" && card.status !== "done") tasks.move(card.id, "done");
+    else if (run.state === "failed" && card.status !== "waiting") { tasks.update(card.id, { detail: "failed — see ▶ RUNS in the Workflow Builder" }); tasks.move(card.id, "waiting"); }
+    else if (run.state === "cancelled" && card.status !== "done") tasks.remove(card.id);
+  } catch (e) { console.error("[tasks] workflow card", e && e.message); }
+}
+onBroadcastHook = (evt) => {
+  triggers.onEvent(evt);
+  if (evt && evt.type === "workflow.run") syncWorkflowCard(evt.run);
+  if (typeof plugins !== "undefined") plugins.onEvent(evt);
+};
 approvals.on("workflow", (item, d) => {
   const m = item.meta || {};
   workflows.resume(m.runId, m.nodeId, d === "approve" ? "approve" : "reject", item.note);
@@ -3953,6 +4118,13 @@ const plugins = require("./plugins")({
   // post a visible line to the office feed (shows in the overlay stream).
   feed: (text, agent) => broadcast({ type: "chat.message", agent: agent || "main", text: String(text) }),
   log: (s) => console.log(s),
+  // v1.4 hooks (design H): the office's own machinery, handed to plugins.
+  notify: (item) => notify.send(item || {}),
+  approvals: { ask: (item) => approvals.ask({ kind: "plugin", ...(item || {}) }).promise, list: (o) => approvals.list(o || {}), pendingCount: () => approvals.pendingCount() },
+  tasks, calendar,
+  schedule: (p) => createJob(p || {}),
+  triggers, workflows,
+  codex: { exec: (o) => codexMission("exec", o || {}, (o && o.agent) || "main"), review: (o) => codexMission("review", o || {}, (o && o.agent) || "main"), status: () => codex.status() },
 });
 
 // ---------------------------------------------------------------- social
@@ -4083,7 +4255,7 @@ function decideProposal(p, decision, message) {
   const note = String(message || "").slice(0, 600).trim();   // owner's optional note
   if (note) p.message = note;
   saveProposals();
-  const noteLine = note ? `เจ้าของฝากข้อความ: "${note}"\n` : "";
+  const noteLine = note ? `The owner added a note: "${note}"\n` : "";
   if (decision === "approve") {
     let proj = null;
     // Approved projects are born in a DEFAULT projects folder (the
@@ -4094,15 +4266,15 @@ function decideProposal(p, decision, message) {
     } catch (e) { /* duplicate name → Director routes to the existing one */ }
     queueDirectorTurn((release) => {
       runClaude("main",
-        `CEO อนุมัติข้อเสนอโปรเจคของทีมแล้ว 🎉\n` +
-        `ชื่อ: ${p.name}\nไอเดีย: ${p.detail}\nผู้เสนอ: ${p.agents.join(", ")}\n` + noteLine +
-        (proj ? `โปรเจคถูกสร้างไว้แล้วที่ ${proj.dir} (ทำงานในโฟลเดอร์นี้เท่านั้น)\n` : "") +
-        `กติกา: ห้ามแก้ไขระบบหลักของโปรแกรม (daemon/godot/shell/cli) เด็ดขาด — ` +
-        `ถ้าเป็นการต่อยอดออฟฟิศ ให้ทำเป็น plugin ตาม docs/guide/plugins.md ` +
-        `(เริ่มจาก template: github.com/bagidea/bagidea-office-template).\n` +
-        `จัดทีมเลย: DELEGATE: <agent> @ ${p.name} :: <งานชิ้นแรกที่ชัดเจน> ` +
-        `ให้คนที่เสนอไอเดียได้ทำเป็นหลัก แล้วสรุปแผนสั้นๆ` +
-        (note ? ` และนำข้อความของเจ้าของไปปรับทิศทางงานด้วย` : ""),
+        `The CEO approved the team's project proposal 🎉\n` +
+        `Name: ${p.name}\nIdea: ${p.detail}\nProposed by: ${p.agents.join(", ")}\n` + noteLine +
+        (proj ? `The project has been created at ${proj.dir} (work only inside this folder).\n` : "") +
+        `Rules: never modify the program's core (daemon/godot/shell/cli). ` +
+        `An extension of the office must be a plugin, per docs/guide/plugins.md ` +
+        `(start from the template: github.com/bagidea/bagidea-office-template).\n` +
+        `Staff it now: DELEGATE: <agent> @ ${p.name} :: <a clear first task> — ` +
+        `let the people who proposed the idea lead it, then summarize the plan briefly` +
+        (note ? `, steering the work by the owner's note` : "") + `.`,
         { logPrompt: `✅ อนุมัติข้อเสนอ: ${p.name}`,
           filterText: makeDelegateFilter(0, undefined),
           onDone: () => release() });
@@ -4162,17 +4334,17 @@ const DISCUSSION_INSTRUCTION =
 // it as one extracted constant makes the social path explicit and prevents the
 // regression where a phase rewrite silently drops project-pitch generation.
 const SOCIAL_PROPOSAL_INSTRUCTION =
-  `\nคุณภาพสำคัญกว่าปริมาณเสมอ. ส่วนใหญ่ไอเดียควร "อยู่เป็นไอเดีย" — เสนอเฉพาะอันที่` +
-  `มีประโยชน์จริง ใช้ได้จริง และคุณจะใช้มันเองหรือเจ้าของได้ใช้จริง ๆ. ` +
-  `อย่าเสนอของเล่นทิ้งขว้างหรือ plugin ขยะ และอย่าเสนอถี่ — ถ้ายังไม่ตกผลึกหรือยังไม่คุ้ม อย่าเพิ่งเสนอ.\n` +
-  `ก่อนจะเสนอ ถามตัวเองให้ครบ: ใครได้ใช้? แก้ปัญหาอะไรจริง ๆ? ทำไมถึงคุ้มที่จะสร้าง? ดีกว่าของที่มีอยู่ตรงไหน?\n` +
-  `ถ้าตกผลึกเป็นโปรเจคที่ "ควรสร้างจริง" ให้เพิ่มบรรทัดสุดท้าย:\n` +
-  `PROPOSAL: <ชื่อโปรเจค> :: <อธิบายให้ชัด: ทำอะไร ใครใช้ แก้ปัญหาอะไร และทำไมถึงคุ้ม — ให้เจ้าของตัดสินใจได้>\n` +
-  `คิดให้รอบคอบและคิดการใหญ่ได้: plugin ที่จริงจังมี UI + แก้ปัญหาให้เจ้าของได้จริง, หรือเป็น` +
-  `เว็บ/เว็บแอป/โปรแกรม/เครื่องมือที่ใช้งานได้จริง (โปรเจคอิสระใน workspace). เลือกขนาดให้เหมาะกับคุณค่าของมัน.\n` +
-  `กติกาความปลอดภัยข้อเดียว: ถ้าจะต่อยอดกับตัวโปรแกรม BagIdea Office เองให้เสนอเป็น ` +
-  `"plugin" เท่านั้น (ดู docs/guide/plugins.md — plugin เข้าถึงโปรแกรมได้ลึก: panel, route, command, ` +
-  `broadcast, ฯลฯ ทำเป็น solution จริงให้เจ้าของได้) — ห้ามแก้ระบบหลัก (daemon/godot/shell) ตรง ๆ เพราะจะทำให้โปรแกรมพัง.`;
+  `\nQuality over quantity, always. Most ideas should "stay ideas" — propose only one that is ` +
+  `genuinely useful, genuinely workable, and that you or the owner would actually use. ` +
+  `No throwaway toys or junk plugins, and don't propose often — if it hasn't crystallized or isn't worth it yet, don't propose it yet.\n` +
+  `Before proposing, ask yourself all of: who would use it? what problem does it really solve? why is it worth building? how is it better than what exists?\n` +
+  `If it crystallizes into a project that "should really be built", add a final line:\n` +
+  `PROPOSAL: <project name> :: <a clear description: what it does, who uses it, what problem it solves and why it is worth it — enough for the owner to decide>\n` +
+  `Think carefully, and think big when warranted: a serious plugin with a UI that solves a real problem for the owner, or a ` +
+  `website / web app / program / tool that really works (an independent project in the workspace). Size it to its value.\n` +
+  `One safety rule: anything that extends the BagIdea Office program itself must be proposed as a ` +
+  `"plugin" only (see docs/guide/plugins.md — a plugin reaches deep into the program: panel, routes, commands, ` +
+  `broadcast and more, enough for a real solution for the owner) — never edit the core (daemon/godot/shell) directly; it would break the program.`;
 
 // Meeting templates fill the launcher (topic + discussion depth). Pure data —
 // the overlay maps them to a <select>; they never change phase structure.
@@ -4366,8 +4538,11 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
           text: a.text, due: a.due || "", status: "open", created: Date.now()
         }));
         saveActions(entry.key, stamped);
-        for (const a of stamped)
+        for (const a of stamped) {
           broadcast({ type: "meeting.action", action: a, session: entry.key });
+          // 📋 …and a card on the board, owned by whoever the meeting assigned.
+          try { tasks.create({ title: a.text.slice(0, 160), kind: "action", owner: a.owner, due: a.due, source: { kind: "meeting", ref: a.id } }); } catch {}
+        }
       }
     } catch (e) { console.error("[meeting] action items save failed:", e && e.message); }
     // Markdown minutes inside the agents' workspace — searchable by them.
@@ -4946,6 +5121,9 @@ const server = http.createServer((req, res) => {
           // 📦 where this agent RUNS (local / a configured container / another
           // machine). Unset means the office default.
           backend: String(p.backend !== undefined ? p.backend : (cur.backend || "")).slice(0, 40),
+          // 🧠 memory plugins this agent opted into (v1.4): lines they contribute at
+          // prompt time. Opt-in per agent, by design.
+          memoryPlugins: Array.isArray(p.memoryPlugins) ? p.memoryPlugins.map(String).slice(0, 20) : (cur.memoryPlugins || []),
         };
         saveReg();
         pushRoster();
@@ -5479,33 +5657,7 @@ end tell`;
     // Create a standing work order: now / at (one-shot or daily) / every N.
     readBody(req, (body) => {
       try {
-        const p = JSON.parse(body);
-        if (!p.agent || !reg.agents[p.agent] || p.agent === "ceo") throw new Error("bad agent");
-        if (!p.prompt) throw new Error("no prompt");
-        const job = {
-          id: nextJobId(),
-          agent: p.agent,
-          prompt: String(p.prompt).slice(0, 4000),
-          mode: ["now", "at", "every"].includes(p.mode) ? p.mode : "now",
-          at: Number(p.at) || 0,
-          time: String(p.time || "").slice(0, 5),
-          daily: !!p.daily,
-          everyMin: Math.max(5, Number(p.everyMin) || 10),  // floor: 5 min
-          // Honour a caller that asks for a job to land switched OFF. This is the
-          // only way to queue work that waits for a human to approve it, and it
-          // used to be impossible: the field was hardcoded true.
-          enabled: p.enabled === false ? false : true,
-          created: Date.now(),
-        };
-        jobs.push(job);
-        saveJobs();
-        if (!job.enabled) approvals.ask({ kind: "job", ref: job.id, agent: job.agent,
-          title: `Job for ${(reg.agents[job.agent] || {}).name || job.agent}: ${job.prompt.slice(0, 80)}`,
-          detail: job.prompt });
-        // ...and don't fire a "now" job that was created disabled. dispatchJob()
-        // itself never consults .enabled — only the scheduler's jobDue() does,
-        // and that never looks at mode:"now" — so this is the only gate there is.
-        if (job.mode === "now" && job.enabled) dispatchJob(job);
+        const job = createJob(JSON.parse(body));
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ id: job.id }));
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
@@ -5575,31 +5727,128 @@ end tell`;
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
 
-  } else if (req.method === "GET" && req.url === "/calendar") {
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/calendar") {
+    // 📅 events + the next 30 days of occurrences (recurrence expanded).
+    const q = new URL(req.url, "http://x").searchParams;
+    const from = Number(q.get("from")) || Date.now(), to = Number(q.get("to")) || from + 30 * 86400000;
     res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-    res.end(JSON.stringify({ cal }));
+    res.end(JSON.stringify({ cal: calendar.list(), upcoming: calendar.occurrences(from, to, { limit: 300 }) }));
 
   } else if (req.method === "POST" && req.url === "/calendar") {
+    // { title, at, end?, allDay?, remindMin?, recurrence?, link?, agent?, notes? } · { edit: id, …patch } · { remove: id }
     readBody(req, (body) => {
       try {
         const p = JSON.parse(body);
-        if (p.remove) cal = cal.filter((c) => c.id !== p.remove);
-        else if (p.edit) {
-          const c = cal.find((x) => x.id === p.edit);
-          if (!c) throw new Error("not found");
-          if (p.title) c.title = String(p.title).slice(0, 120);
-          if (p.at) { const at = Number(p.at) || Date.parse(p.at); if (at) { c.at = at; c.notified = false; } }
-          if (p.remindMin !== undefined) c.remindMin = Math.max(1, Number(p.remindMin) || 10);
-        } else {
-          const at = Number(p.at) || Date.parse(p.at);
-          if (!p.title || !at) throw new Error("need title + at");
-          cal.push({ id: "c" + Date.now(), title: String(p.title).slice(0, 120),
-            at, remindMin: Math.max(1, Number(p.remindMin) || 10), notified: false });
-        }
-        saveCal();
-        res.writeHead(200); res.end("ok");
+        let out = { ok: true };
+        if (p.remove) { if (!calendar.remove(p.remove)) throw new Error("not found"); }
+        else if (p.edit) out = calendar.edit(p.edit, p);
+        else out = calendar.add(p);
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(out));
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
     });
+
+  } else if (req.method === "GET" && req.url === "/calendar/ics") {
+    // The office calendar as a .ics file — subscribe to it, or import it once.
+    res.writeHead(200, { "content-type": "text/calendar; charset=utf-8", "content-disposition": "attachment; filename=\"bagidea-office.ics\"" });
+    res.end(calendar.toICS());
+
+  } else if (req.method === "POST" && req.url === "/calendar/import") {
+    // { ics: "<text>" } — VEVENTs in; the same UID updates instead of duplicating. Human UI only.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBodyRaw(req, (raw) => {
+      try {
+        let text = raw.toString("utf8");
+        if (/^\s*\{/.test(text)) text = String(JSON.parse(text).ics || "");
+        const r = calendar.importICS(text);
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(r));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  // ---- 📋 tasks (v1.4) --------------------------------------------------------
+  } else if (req.method === "GET" && req.url.split("?")[0] === "/tasks") {
+    const q = new URL(req.url, "http://x").searchParams;
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ tasks: tasks.list({ status: q.get("status") || "", owner: q.get("owner") || "", project: q.get("project") || "", kind: q.get("kind") || "",
+      open: q.get("open") === "1", limit: Number(q.get("limit")) || 0 }), summary: tasks.summary() }));
+
+  } else if (req.method === "GET" && req.url === "/tasks/board") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ board: tasks.board(), summary: tasks.summary(), agents: Object.fromEntries(Object.entries(reg.agents).map(([id, a]) => [id, a.name || id])) }));
+
+  } else if (req.method === "POST" && req.url === "/tasks") {
+    // Create a card. Agents use this from Bash (see tasks.agentNote); the UI too.
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        if (p.owner && p.owner !== "you" && !reg.agents[p.owner]) throw new Error("unknown owner: " + p.owner);
+        const t = tasks.create(p, req.headers["x-bagidea-ui"] ? "you" : (p.by || "agent"));
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(t));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/tasks/update") {
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        if (p.owner && p.owner !== "you" && !reg.agents[p.owner]) throw new Error("unknown owner: " + p.owner);
+        const t = tasks.update(p.id, p, req.headers["x-bagidea-ui"] ? "you" : "agent");
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(t));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/tasks/move") {
+    readBody(req, (body) => {
+      try {
+        const p = JSON.parse(body);
+        const t = tasks.move(p.id, p.status, req.headers["x-bagidea-ui"] ? "you" : "agent");
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(t));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/tasks/delete") {
+    // Deleting is the owner's — an agent marks a card done, it never makes one vanish.
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try { const p = JSON.parse(body); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: tasks.remove(p.id) })); }
+      catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  // ---- 🧑‍💻 codex (v1.4) --------------------------------------------------------
+  } else if (req.method === "GET" && req.url === "/codex/status") {
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify(codex.status()));
+
+  } else if (req.method === "POST" && req.url === "/codex/settings") {
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try { const out = codex.setSettings(JSON.parse(body)); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify(out)); }
+      catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && (req.url === "/codex/exec" || req.url === "/codex/review")) {
+    // { task | instructions, project?, sandbox?, model?, agent?, base?, commit? } — returns when Codex finishes.
+    readBody(req, (body) => {
+      let p; try { p = JSON.parse(body); } catch { res.writeHead(400); return res.end("bad json"); }
+      const agent = p.agent && reg.agents[p.agent] && p.agent !== "ceo" ? p.agent : "main";
+      const kind = req.url.endsWith("/review") ? "review" : "exec";
+      if (kind === "exec" && !String(p.task || "").trim()) { res.writeHead(400); return res.end("task is required"); }
+      let run;
+      try { run = codexMission(kind, p, agent); } catch (e) { res.writeHead(400); return res.end(String(e.message)); }
+      run.then((r) => { res.writeHead(200, { "content-type": "application/json; charset=utf-8" }); res.end(JSON.stringify(r)); })
+         .catch((e) => { res.writeHead(500); res.end(String(e && e.message)); });
+    });
+
+  } else if (req.method === "POST" && req.url === "/codex/cancel") {
+    if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+    readBody(req, (body) => {
+      try { const p = JSON.parse(body); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ ok: codex.cancel(p.id) })); }
+      catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url === "/workflows/types") {
+    // Node types the Builder can offer: built-ins plus what the office and plugins registered.
+    res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({ types: workflows.nodeTypes() }));
 
   } else if (req.method === "POST" && req.url === "/registry/key") {
     // 🔑 API key vault: ENV_NAME → value, injected into every agent run's
@@ -6312,7 +6561,9 @@ end tell`;
       pendingPerms: pendingPerms.size,
       jobs: jobs.filter((j) => !j.done && j.enabled !== false).length,
       notes: notes.length,
-      events: cal.filter((c) => c.at > Date.now()).length,
+      events: calendar.occurrences(Date.now(), Date.now() + 30 * 86400000, { limit: 200 }).length,
+      tasks: tasks.summary(),
+      codex: codex.detect().installed,
       channels: channels.status(),
       features: featuresMap(),
       projects: projectStatus().map((p) => ({ name: p.name, ai: p.ai, open: p.open })),
@@ -6792,7 +7043,7 @@ end tell`;
 
   } else if (req.method === "GET" && req.url === "/triggers") {
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify({ triggers: triggers.list(), kinds: [...triggers.KINDS] }));
+    res.end(JSON.stringify({ triggers: triggers.list(), kinds: triggers.kinds() }));
 
   } else if (req.method === "POST" && req.url === "/triggers") {
     readBody(req, (body) => {

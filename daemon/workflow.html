@@ -240,7 +240,7 @@
     if (WL) WL.ensure(Object.keys(TR), rerenderAll);   // fill gaps via Gemini, re-render live
   }).catch(()=>{});
 
-  const TYPES = [["trigger","⚡ เริ่มเมื่อ"],["fetch","⬇ ดึงข้อมูล"],["action","⚙ ทำงาน"],
+  let TYPES = [["trigger","⚡ เริ่มเมื่อ"],["fetch","⬇ ดึงข้อมูล"],["action","⚙ ทำงาน"],
     ["decision","◆ ตัดสินใจ"],["approval","✋ รออนุมัติ"],["notify","🔔 แจ้งเตือน"],["delay","⏳ หน่วงเวลา"],
     ["output","📤 ส่งผล"],["note","📝 โน้ต"]];
   // What each type expects in its text box — shown as the placeholder.
@@ -250,6 +250,17 @@
     approval:"คำถามที่ให้คุณกดอนุมัติก่อนไปต่อ (ไปโผล่ที่ 📥 APPROVALS และมือถือ)",
     notify:"ข้อความแจ้งเตือน (ผ่านกฎ 🔔 NOTIFY) · ใช้ {{prev}} ได้", delay:"10m · 2h · 30s · until 09:00",
     output:"ผลลัพธ์ · file:C:/path/out.md เขียนไฟล์ · channel: ส่งไปมือถือ", note:"โน้ตบนผืนผ้าใบ (ไม่รัน)" };
+  // Node types the office and plugins registered (🧑‍💻 Codex, a plugin's own) join the palette.
+  fetch("/workflows/types").then(r=>r.json()).then(j => {
+    for (const t of (j.types||[])) {
+      if (t.builtin || TYPES.some(([v]) => v === t.kind)) continue;
+      TYPES.push([t.kind, t.label || t.kind]); HINTS[t.kind] = t.hint || "";
+    }
+    document.querySelectorAll(".node select").forEach(sel => {
+      const cur = sel.value;
+      sel.innerHTML = TYPES.map(([v,l]) => `<option value="${v}"${v===cur?" selected":""}>${tr(l)}</option>`).join("");
+    });
+  }).catch(()=>{});
   const W = 230, NS = "http://www.w3.org/2000/svg";
   // ---- open tabs: each holds a full workflow; the live globals mirror the active one
   let tabs = [];          // {id,name,example,nodes,edges,pan,zoom}
@@ -554,9 +565,16 @@
     if (k === "event") return { type: a };
     if (k === "file") return { dir: a, glob: b || "*" };
     if (k === "channel") return { keyword: a };
+    const ck = CUSTOM_KINDS[k];
+    if (ck) { const o = {}; if (ck.fields[0]) o[ck.fields[0].key] = a; if (ck.fields[1]) o[ck.fields[1].key] = b; return o; }
     return {};
   }
   function trigLabel(t) {
+    const k = CUSTOM_KINDS[t.kind];
+    if (k) return (k.label || t.kind) + " · " + Object.entries(t.cfg || {}).map(([a, b]) => a + "=" + b).join(", ");
+    return trigLabelBuiltin(t);
+  }
+  function trigLabelBuiltin(t) {
     const c = t.cfg || {};
     if (t.kind === "schedule") return c.everyMin ? tr("ทุก") + " " + c.everyMin + " " + tr("นาที") : tr("ทุกวัน") + " " + c.at;
     if (t.kind === "webhook") return location.origin + "/hook/" + c.token;
@@ -566,6 +584,18 @@
     return "";
   }
   const TRIG_ICON = { schedule:"⏰", webhook:"🌐", event:"📡", file:"📁", channel:"💬" };
+  // Trigger kinds a plugin contributed: they get a select option, their first two
+  // fields map onto the A/B inputs, and their label shows in the list.
+  const CUSTOM_KINDS = {};
+  fetch("/triggers").then(r=>r.json()).then(j => {
+    const sel = document.getElementById("trigKind");
+    for (const k of (j.kinds||[])) {
+      if (k.builtin || CUSTOM_KINDS[k.kind]) continue;
+      CUSTOM_KINDS[k.kind] = k;
+      TRIG_FIELDS[k.kind] = [(k.fields[0] && (k.fields[0].label || k.fields[0].key)) || "", (k.fields[1] && (k.fields[1].label || k.fields[1].key)) || ""];
+      const o = document.createElement("option"); o.value = k.kind; o.textContent = "🧩 " + (k.label || k.kind); sel.appendChild(o);
+    }
+  }).catch(()=>{});
   function loadTriggers() {
     const box = document.getElementById("trigBox"); if (!box) return;
     if (!curId || isExample) { box.innerHTML = ""; return; }
@@ -574,7 +604,7 @@
       box.innerHTML = mine.length ? "" : `<div class="muted">${tr("— ยังไม่มี trigger —")}</div>`;
       for (const t of mine) {
         const d = document.createElement("div"); d.className = "trow" + (t.enabled ? "" : " off");
-        d.innerHTML = `<span class="k">${TRIG_ICON[t.kind]||"⚡"}</span><span class="d" title="${esc(trigLabel(t))}">${esc(trigLabel(t))}</span>` +
+        d.innerHTML = `<span class="k">${TRIG_ICON[t.kind]||"🧩"}</span><span class="d" title="${esc(trigLabel(t))}">${esc(trigLabel(t))}</span>` +
           `<button title="${tr("เปิด/ปิด")}">${t.enabled ? "⏸" : "▶"}</button><button title="${tr("ทดสอบยิงเลย")}">🔥</button><button title="${tr("ลบ")}">✕</button>`;
         const [tog, fire, del] = d.querySelectorAll("button");
         tog.onclick = () => fetch("/triggers", { method:"POST", headers:UI, body: JSON.stringify({ id: t.id, enabled: !t.enabled }) }).then(loadTriggers);

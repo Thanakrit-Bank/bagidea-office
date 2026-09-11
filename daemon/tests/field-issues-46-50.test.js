@@ -36,8 +36,9 @@ test("#50 job ids survive a burst of creations in the same millisecond", () => {
 
 // ── #48: enabled:false discarded, and "now" fired before you could stop it ──
 test("#48 a job created with enabled:false lands disabled and does not fire", () => {
-  const handler = SERVER.slice(SERVER.indexOf('req.url === "/jobs"'),
-                               SERVER.indexOf('req.url === "/jobs/update"'));
+  // v1.4 moved the job's birth into createJob() (shared with plugins' ctx.schedule).
+  const handler = SERVER.slice(SERVER.indexOf("function createJob("),
+                               SERVER.indexOf("function jobDue("));
   assert.doesNotMatch(handler, /^\s*enabled: true,\s*$/m,
     "`enabled` is hardcoded again — a caller's enabled:false is discarded");
   assert.match(handler, /enabled:\s*p\.enabled === false \? false : true/,
@@ -99,14 +100,26 @@ test("#49 no prompt block instructs the model in Thai", () => {
     ["TOOLS_NOTE", "const TOOLS_NOTE", "const BRAIN_NOTE"],
     ["autoNote", "function autoNote()", "\n}"],
     ["Gemini Live", "systemInstruction: { parts:", "toClient({ type: \"ready\" })"],
+    // v1.4: the rest of the Director's and every agent's scaffolding — found
+    // while wiring Codex, one sweep after the last one.
+    ["directorNote", "function directorNote()", "function ceoFlow("],
+    ["DELEGATE_NOTE", "const DELEGATE_NOTE", "// ---------------------------------------------------------------- 🤖 AUTO mode"],
+    ["projectNote", "function projectNote()", "function projectStatus()"],
+    ["heartbeat", "function heartbeat()", "// ▶ Resume tick"],
+    ["resume", "function resumePausedTick(", "\n}"],
+    ["proposal approved", "function decideProposal(", "} else if (decision === \"reject\" && note) {"],
+    ["SOCIAL_PROPOSAL_INSTRUCTION", "const SOCIAL_PROPOSAL_INSTRUCTION", "const MEETING_TEMPLATES"],
+    ["calendar reminder", "const calendar = require(\"./calendar\")", "\n});"],
   ];
   const bad = [];
   // The standing-order notes live in their own module and were missed by the
   // v1.0.5 sweep — the same bug, one file over.
-  const JOBORDER = fs.readFileSync(path.join(ROOT, "daemon", "joborder.js"), "utf8");
-  for (const line of JOBORDER.split(/\r?\n/)) {
-    if (/^\s*\/\//.test(line)) continue;
-    if (majorityThai(line)) bad.push("joborder.js: " + line.trim().slice(0, 70));
+  for (const mod of ["joborder.js", "tasks.js", "codex.js", "workflows.js"]) {
+    const SRC = fs.readFileSync(path.join(ROOT, "daemon", mod), "utf8");
+    for (const line of SRC.split(/\r?\n/)) {
+      if (/^\s*\/\//.test(line)) continue;
+      if (majorityThai(line)) bad.push(mod + ": " + line.trim().slice(0, 70));
+    }
   }
   for (const [name, from, to] of BLOCKS) {
     const i = SERVER.indexOf(from);
@@ -115,6 +128,9 @@ test("#49 no prompt block instructs the model in Thai", () => {
     const body = SERVER.slice(i, j > -1 ? j : i + 2500);
     for (const line of body.split(/\r?\n/)) {
       if (/^\s*\/\//.test(line)) continue;            // comments may explain in any language
+      // Display-only strings are not model input: `logPrompt:` is the label the
+      // owner sees in the thread, `text:` on a chat.message is a line in the chat.
+      if (/\blogPrompt\s*:/.test(line) || /^\s*text\s*:\s*["'`]/.test(line)) continue;
       if (majorityThai(line)) bad.push(`${name}: ${line.trim().slice(0, 70)}`);
     }
   }
