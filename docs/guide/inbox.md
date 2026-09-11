@@ -11,7 +11,9 @@ and everything the office wants you to know goes through **rules you set** —
 to the sidebar, to a pop-up, to your phone, or with a sound, and only when you
 want it to.
 
-Open the sidebar (**🛡** in the chat window's title bar) to see both.
+Open the sidebar (**🛡** in the chat window's title bar) to see both. While anything is
+waiting, the **tray icon carries a red dot** and its tooltip says how many — visible
+with every window closed.
 
 ---
 
@@ -87,7 +89,7 @@ badge) — that part is always on. The **rules** decide what else happens:
 
 | Where | What it is |
 |---|---|
-| **toast** | a pop-up in the corner of the chat window; click it to jump to the item *(the OS's own toasts arrive with v1.2)* |
+| **toast** | a pop-up in the corner of the chat window — and, since v1.2, a small always-on-top window in the corner of your **screen**, drawn by the office itself, so it shows even when the chat window is hidden or covered; click either to jump to the item |
 | **channel** | pushed to Telegram / Discord / LINE / Slack / WhatsApp / Messenger |
 | **sound** | one short cue (respects the office sound toggle) |
 
@@ -106,7 +108,7 @@ Set them per *kind* in **⚙ → 🔔 NOTIFY**:
 | 📥 approval | something needs your decision | everywhere, always |
 | ⛔ blocked | an AUTO agent is stuck | everywhere, always |
 | ⏰ reminder | a calendar reminder | everywhere, quiet hours respected |
-| 💸 budget | a spend warning *(v1.2)* | everywhere, always |
+| 💸 budget | a spend warning or a stop — see [budgets](budget.md) | everywhere, always |
 | ✅ done | delegated work reported back | centre + channel |
 | 🔀 workflow | a workflow finished or failed *(v1.3)* | centre + toast + channel |
 | 💡 proposal | the team pitched something | centre + channel |

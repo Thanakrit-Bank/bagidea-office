@@ -84,6 +84,9 @@ Inbox
   bagidea deny <n|id> [note]    …with its last option
   bagidea answer <n|id> <option> [note]   …with a specific option (continue, enable, always…)
   bagidea notify [test]         Unread notifications · `test` sends one through your rules
+  bagidea budget                Today's spend vs your caps (office · agent · project)
+  bagidea budget set office 5   Cap the office at $5/day · set agent <id> 2 · set project <id> 40 · off
+  bagidea budget digest [on|off|HH:MM]   The morning digest (no argument = send it now)
 
 Maintenance
   bagidea doctor                Diagnose why the office won't load — port, proxy,

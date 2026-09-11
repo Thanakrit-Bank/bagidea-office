@@ -123,6 +123,9 @@ enum UserEvent {
     EditorOpening, // show the logo splash + launch the 3D editor tiny behind it
     EditorReady,   // the editor window is on screen → drop the splash
     OpenWindow(String), // pop a custom-chrome window onto a daemon URL (plugin / viewer)
+    Toast(String, String),             // show an OS-level notification: (title, body)
+    ToastClose(tao::window::WindowId), // its timer ran out, or it was clicked
+    Badge(u32),                        // things waiting for the owner → tray icon dot + tooltip
     PopupDrag(tao::window::WindowId),  // a pop-out's title bar is being dragged
     PopupClose(tao::window::WindowId), // a pop-out asked to close itself
     PopupMin(tao::window::WindowId),   // minimize (พัก)
@@ -476,6 +479,51 @@ fn tray_app_icon() -> Option<tray_icon::Icon> {
     let (rgba, w, h) = icon_rgba()?;
     tray_icon::Icon::from_rgba(rgba, w, h).ok()
 }
+
+// The app icon with a red dot in the corner while `n` things wait for the owner.
+// Drawn straight into the RGBA buffer — no font, no extra crate; the number goes
+// in the tooltip.
+fn tray_badge_icon(n: u32) -> Option<tray_icon::Icon> {
+    let (mut rgba, w, h) = icon_rgba()?;
+    if n > 0 {
+        let r = (w.min(h) as f32 * 0.22).max(3.0);
+        let (cx, cy) = (w as f32 - r - 1.0, h as f32 - r - 1.0);
+        for y in 0..h {
+            for x in 0..w {
+                let dx = x as f32 + 0.5 - cx;
+                let dy = y as f32 + 0.5 - cy;
+                let d = (dx * dx + dy * dy).sqrt();
+                if d <= r + 0.5 {
+                    let i = ((y * w + x) * 4) as usize;
+                    // a thin white rim so the dot reads on dark and light trays
+                    let (cr, cg, cb) = if d > r - 1.2 { (255u8, 255u8, 255u8) } else { (255u8, 70u8, 60u8) };
+                    rgba[i] = cr; rgba[i + 1] = cg; rgba[i + 2] = cb; rgba[i + 3] = 255;
+                }
+            }
+        }
+    }
+    tray_icon::Icon::from_rgba(rgba, w, h).ok()
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+}
+
+// The toast page. Embedded: it must render with the daemon unreachable too.
+const TOAST_HTML: &str = r#"<!doctype html><html><head><meta charset="utf-8"><style>
+ html,body{margin:0;height:100%;background:transparent;font:12.5px/1.45 system-ui,Segoe UI,sans-serif;color:#dbe6f5;overflow:hidden}
+ .t{box-sizing:border-box;height:100%;margin:0;padding:11px 14px;border-radius:14px;cursor:pointer;
+   background:linear-gradient(160deg,#1a2740 0%,#0e1526 70%);border:1px solid rgba(125,205,255,.4);
+   box-shadow:0 10px 30px rgba(0,0,0,.55);display:flex;flex-direction:column;justify-content:center}
+ .h{display:flex;align-items:center;gap:8px}
+ .h b{color:#cfe3ff;font-size:13px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .h .x{color:#6b7a92;font-size:13px;padding:0 2px;cursor:pointer}
+ .b{color:#9fb2cc;margin-top:3px;max-height:40px;overflow:hidden;white-space:pre-wrap;word-break:break-word}
+ .k{position:absolute;left:18px;bottom:6px;font-size:10px;color:#3f4d66;letter-spacing:1.5px}
+</style></head><body><div class="t" onclick="window.ipc.postMessage('toast-open')">
+ <div class="h"><b>__TITLE__</b><span class="x" onclick="event.stopPropagation();window.ipc.postMessage('toast-close')">✕</span></div>
+ <div class="b">__BODY__</div><div class="k">BAGIDEA OFFICE</div>
+</div></body></html>"#;
 
 // =====================================================================
 //  Windows platform implementation
@@ -2343,7 +2391,7 @@ fn main() {
         &PredefinedMenuItem::separator(),
         &exit_item,
     ]);
-    let _tray = TrayIconBuilder::new()
+    let tray = TrayIconBuilder::new()
         .with_menu(Box::new(tray_menu))
         .with_tooltip("BagIdea Office")
         .with_icon(tray_app_icon().expect("tray icon"))
@@ -2439,6 +2487,15 @@ fn main() {
                     "large" => p_overlay.send_event(UserEvent::LargeToggle),
                     "feed-hover:1" => p_overlay.send_event(UserEvent::FeedHover(true)),
                     "feed-hover:0" => p_overlay.send_event(UserEvent::FeedHover(false)),
+                    // "notify:<title>\x1f<body>" — the rules already decided this one
+                    // deserves a pop-up; the shell only draws it where it can be seen.
+                    s if s.starts_with("notify:") => {
+                        let rest = &s[7..];
+                        let (t, b) = match rest.split_once('\x1f') { Some((t, b)) => (t, b), None => (rest, "") };
+                        p_overlay.send_event(UserEvent::Toast(t.to_string(), b.to_string()))
+                    }
+                    s if s.starts_with("badge:") =>
+                        p_overlay.send_event(UserEvent::Badge(s[6..].trim().parse::<u32>().unwrap_or(0))),
                     s if s.starts_with("resize:") =>
                         p_overlay.send_event(UserEvent::ResizeDrag(s[7..].to_string())),
                     s if s.starts_with("hotkey:") =>
@@ -2500,6 +2557,11 @@ fn main() {
     // overlay. Held here so their Window + WebView stay alive; dropped on close.
     // Tuple: (window id, single-instance key, window, webview).
     let mut popups: Vec<(tao::window::WindowId, String, Window, wry::WebView)> = Vec::new();
+    // Toasts: small always-on-top windows in the corner of the primary monitor.
+    // Drawn by us, not by the OS: an unpackaged app's OS toasts on Windows show
+    // up attributed to PowerShell (or not at all without an AppUserModelID), and
+    // a window we own looks the same on all three platforms and costs no crate.
+    let mut toasts: Vec<(tao::window::WindowId, Window, wry::WebView)> = Vec::new();
     let mut mini = false;
     let mut feed = false;
     let mut large = false;
@@ -2922,6 +2984,70 @@ fn main() {
                     if let Some((_, _, win, _)) = popups.iter().find(|(i, _, _, _)| *i == id) {
                         let _ = win.drag_window();
                     }
+                }
+                UserEvent::Toast(title, body) => {
+                    // Stack from the bottom-right corner up; at most three on screen.
+                    while toasts.len() >= 3 { toasts.remove(0); }
+                    let (tw, th) = (300.0_f64, 96.0_f64);
+                    let win = WindowBuilder::new()
+                        .with_title("BagIdea Office")
+                        .with_inner_size(LogicalSize::new(tw, th))
+                        .with_decorations(false)
+                        .with_resizable(false)
+                        .with_always_on_top(true)
+                        .with_transparent(true)
+                        .with_window_icon(app_icon())
+                        .build(target)
+                        .expect("toast window");
+                    if let Some(m) = win.primary_monitor() {
+                        let ms = m.size();
+                        let mp = m.position();
+                        let sf = m.scale_factor();
+                        let ws = win.outer_size();
+                        let slot = toasts.len() as i32;
+                        let x = mp.x + ms.width as i32 - ws.width as i32 - (16.0 * sf) as i32;
+                        let y = mp.y + ms.height as i32 - (ws.height as i32 + (12.0 * sf) as i32) * (slot + 1) - (48.0 * sf) as i32;
+                        win.set_outer_position(tao::dpi::PhysicalPosition::new(x, y.max(mp.y)));
+                    }
+                    let id = win.id();
+                    let html = TOAST_HTML
+                        .replace("__TITLE__", &html_escape(&title))
+                        .replace("__BODY__", &html_escape(&body));
+                    let tproxy = proxy.clone();
+                    let oproxy = proxy.clone();
+                    match platform::webview_extras(
+                        WebViewBuilder::new()
+                            .with_html(html)
+                            .with_transparent(true)
+                            .with_ipc_handler(move |req| {
+                                let _ = match req.body().as_str() {
+                                    // click → bring the chat window up, then dismiss
+                                    "toast-open" => { let _ = oproxy.send_event(UserEvent::Toggle); oproxy.send_event(UserEvent::ToastClose(id)) }
+                                    _ => oproxy.send_event(UserEvent::ToastClose(id)),
+                                };
+                            }))
+                        .build(&win)
+                    {
+                        Ok(view) => {
+                            toasts.push((id, win, view));
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(9000));
+                                let _ = tproxy.send_event(UserEvent::ToastClose(id));
+                            });
+                        }
+                        Err(e) => eprintln!("[shell] toast webview: {e}"),
+                    }
+                }
+                UserEvent::ToastClose(id) => {
+                    toasts.retain(|(i, _, _)| *i != id);
+                }
+                UserEvent::Badge(n) => {
+                    // A red dot on the tray icon while anything waits, and the count
+                    // in the tooltip — the one place you can see it with every window
+                    // closed.
+                    let _ = tray.set_icon(tray_badge_icon(n));
+                    let _ = tray.set_tooltip(Some(if n == 0 { "BagIdea Office".to_string() }
+                        else { format!("BagIdea Office — {n} waiting for you") }));
                 }
                 UserEvent::PopupClose(id) => {
                     popups.retain(|(i, _, _, _)| *i != id);

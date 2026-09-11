@@ -4,6 +4,57 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [1.2.0] — 💸 On a budget
+
+The v2 plan's second release. Before the office is allowed to run on its own
+(v1.3), it needs a brake — and the two shell pieces of v1.1's notifications.
+
+**Added**
+- **Caps in money** (`daemon/budget.js`, ⚙ → 💸 BUDGET, `bagidea budget`).
+  The office per calendar day, an agent per day, a project for its lifetime.
+  At **80 %** one warning per day per scope through the notification rules
+  (kind 💸 budget); at **100 % the office stops taking new turns** for that
+  scope — the turn is refused at the very top of `runClaude`, before a session
+  is touched or an event is broadcast, with a chat message saying which cap,
+  how much, and what to do. Running turns always finish. A daily cap releases
+  at midnight; a project cap when you raise it.
+- **Honest numbers.** Claude's spend is the real bill (`total_cost_usd`);
+  swapped-in brains and the voice/image/video tools are estimates and are
+  **labelled ≈** in the panel, in STATS, in the CLI and in every warning. An
+  unknown price is never treated as zero.
+- **Attribution.** Every turn's cost is now recorded against the agent that
+  ran it (a ghost clone counts toward its parent) and the project it ran in
+  (`stats[day].agentCost` / `projCost`) — the two things the per-agent and
+  per-project caps are judged on. `brainBump` attributes too.
+- **🌅 Morning digest** at the time you choose: yesterday's spend, turns, the
+  top spenders, and what's waiting for you. Sent once, through the rules.
+  `bagidea budget digest` shows it now.
+- **Toasts are real windows now.** A `notify` the rules route to *toast* also
+  becomes a small always-on-top window in the corner of the **screen**, drawn by
+  the shell, so it shows when the chat window is hidden or covered; click it to
+  bring the office up. No OS-notification crate: an unpackaged app's Windows
+  toasts show up attributed to PowerShell, or not at all without an
+  AppUserModelID, and a window we own looks the same on all three platforms.
+- **The tray icon carries a red dot** while anything waits for you, with the
+  count in its tooltip — visible with every window closed. Drawn into the icon's
+  RGBA at runtime; no font, no crate.
+- `GET/POST /budget`, `POST /budget/digest`; `/stats` now carries `budget`;
+  a `budget.refused` event on the stream. Setting caps is human-UI-only.
+- **A guide:** [`docs/guide/budget.md`](docs/guide/budget.md).
+- **`daemon/tests/budget.test.js`** — eleven tests: the ledger (real + estimated,
+  labelled), 80 % warns exactly once and 100 % stops, per-agent and lifetime
+  per-project caps on their own attribution, ghost ids collapsing to the
+  parent, cap validation, the digest firing once at its time, and the wiring —
+  the gate sits inside `runClaude` before the session is touched, costs are
+  attributed on every result path, the shell has the arms and no new crate.
+
+**Changed**
+- `bagidea update` will fetch a new shell for this release (the toast window
+  and tray badge are binary changes).
+
+Nothing here changes what an agent may do, and nothing is capped until you set
+a cap. The digest is off until you switch it on.
+
 ## [1.1.0] — 🔔 You'll know
 
 The first release of the v2 plan ([`docs/DESIGN-v2.md`](docs/DESIGN-v2.md)):

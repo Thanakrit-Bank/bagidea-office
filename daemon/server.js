@@ -1279,8 +1279,13 @@ const BRAIN_PRICES = {
   openai: [2.5, 10], gemini: [0.15, 0.6], openrouter: [1, 3], nvidia: [0, 0],
 };
 // Accumulate a swapped-in brain's token spend under stats[day].brains[provider].
-function brainBump(provider, inTok, outTok) {
+function brainBump(provider, inTok, outTok, agent, projId) {
   if (!provider || provider === "claude") return;
+  {
+    const pr0 = BRAIN_PRICES[provider] || [0, 0];
+    const est = (inTok || 0) / 1e6 * pr0[0] + (outTok || 0) / 1e6 * pr0[1];
+    if (est > 0 && typeof budget !== "undefined") budget.attribute(agent, projId, est);
+  }
   const day = new Date().toISOString().slice(0, 10);
   const d = (stats[day] = stats[day] || { runs: 0, done: 0, failed: 0, cost: 0, agents: {} });
   d.brains = d.brains || {};
@@ -1910,6 +1915,9 @@ function resumePausedTick(now) {
 // ---- 30-second scheduler: jobs, reminders, heartbeat.
 setInterval(() => {
   const now = Date.now();
+  // 🌅 One digest a morning, at the time the owner chose — what yesterday cost
+  // and what's waiting today. Through the rules like everything else.
+  if (budget.digestDue(now)) budget.sendDigest(now, { pending: approvals.pendingCount() });
   for (const job of jobs) {
     if (jobDue(job, now)) {
       if (job.mode === "at" && job.daily) job.lastDay = new Date().toDateString();
@@ -2059,6 +2067,21 @@ function runClaude(agent, prompt, opts = {}) {
       runClaude(agent, prompt, opts);
     });
     return task;
+  }
+  // 💸 A cap that is reached refuses the turn HERE — before a session is touched
+  // or an event broadcast — so nothing half-starts. Running turns are never cut
+  // off; only new ones are refused. Warnings (80%) go out once a day per scope.
+  {
+    const gate = budget.check(agent, projId);
+    if (!gate.ok) {
+      const lbl = gate.scope === "office" ? "the office" : gate.scope + " " + gate.id;
+      broadcast({ type: "chat.message", agent, session: entry.key,
+        text: `💸 Budget reached for ${lbl}: $${gate.spent.toFixed(2)}${gate.estimated ? " (est.)" : ""} of $${gate.cap.toFixed(2)} ${gate.unit}. ` +
+              `This turn was not started. Raise the cap in ⚙ → 💸 BUDGET, or wait for ${gate.unit === "today" ? "tomorrow" : "a higher cap"}.` });
+      broadcast({ type: "budget.refused", agent, scope: gate.scope, id: gate.id, spent: gate.spent, cap: gate.cap }, false);
+      if (opts.onDone) try { opts.onDone(`(budget reached for ${lbl} — turn not started)`, false); } catch {}
+      return task;
+    }
   }
   // claude sessions are PER-DIRECTORY: a sid born in another cwd cannot be
   // resumed here. Ground truth beats bookkeeping — check the actual session
@@ -2511,6 +2534,7 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
         }
         if (m.is_error && maybeRecover(typeof m.result === "string" ? m.result : "")) {
           statBump("failed", null, Number(m.total_cost_usd) || 0);
+          budget.attribute(agent, projId, Number(m.total_cost_usd) || 0);
           continue;   // the fresh-thread recovery run owns the callback now
         }
         // Context-usage meter: input tokens this turn vs the backend's window, stamped
@@ -2521,12 +2545,13 @@ model "${mtag}". If the owner asks which AI/model/LLM you are, answer truthfully
         const usage = { in: inTok, out: u.output_tokens || 0, win: ctxWindow(agent) };
         if (!m.is_error) {
           entry.lastUsage = { ...usage, model: mtag, ts: Date.now() }; saveSess();
-          brainBump(mprov, inTok, u.output_tokens || 0);  // estimate non-Claude spend
+          brainBump(mprov, inTok, u.output_tokens || 0, agent, projId);  // estimate non-Claude spend
         }
         ended = true;
         broadcast({ type: m.is_error ? "task.failed" : "task.completed",
           agent, task, session: entry.key, model: mtag, usage });
         statBump(m.is_error ? "failed" : "done", null, Number(m.total_cost_usd) || 0);
+        budget.attribute(agent, projId, Number(m.total_cost_usd) || 0);
         if (!m.is_error && subTasks.length) {
           doneFired = true;  // the synthesis run inherits the callback
           releaseProj();
@@ -3781,6 +3806,11 @@ const approvals = require("./approvals")({
   file: path.join(__dirname, "approvals.json"),
   broadcast, notify: (spec) => notify.send(spec),
   log: (s) => console.log(s),
+});
+// 💸 Money budgets (daemon/budget.js): caps per day / agent / project over the
+// spend the office already records, a warning at 80%, a hard stop at 100%.
+const budget = require("./budget")({
+  reg, saveReg, stats: () => stats, notify: (spec) => notify.send(spec), log: (s) => console.log(s),
 });
 
 // Work milestones → wherever the owner is, through the notification rules.
@@ -6216,6 +6246,7 @@ end tell`;
       channels: channels.status(),
       features: featuresMap(),
       projects: projectStatus().map((p) => ({ name: p.name, ai: p.ai, open: p.open })),
+      budget: budget.summary(),
     }));
 
   } else if (req.method === "GET" && req.url === "/channels/status") {
@@ -6784,6 +6815,31 @@ end tell`;
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(notify.send(p)));
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "GET" && req.url === "/budget") {
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(budget.summary()));
+
+  } else if (req.method === "POST" && req.url === "/budget") {
+    // Caps are the owner's to set — human UI only, like every other switch that
+    // changes what the office may do.
+    readBody(req, (body) => {
+      try {
+        if (!req.headers["x-bagidea-ui"]) { res.writeHead(403); return res.end("human UI only"); }
+        budget.setCaps(JSON.parse(body || "{}"));
+        broadcast({ type: "budget.changed", caps: budget.caps() }, false);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(budget.summary()));
+      } catch (e) { res.writeHead(400); res.end(String(e.message)); }
+    });
+
+  } else if (req.method === "POST" && req.url === "/budget/digest") {
+    // Send the digest now (the ⚙ test button and `bagidea budget digest`).
+    readBody(req, () => {
+      const text = budget.sendDigest(Date.now(), { pending: approvals.pendingCount() });
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ text }));
     });
 
   } else if (req.method === "GET" && req.url === "/inbox") {

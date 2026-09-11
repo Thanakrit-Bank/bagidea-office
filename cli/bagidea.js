@@ -137,6 +137,9 @@ function help() {
   row("inbox", "What's waiting for you, and what's unread");
   row("approve <n|id> [note]", "Answer an item · deny <n|id> [note] · answer <n|id> <option> [note]");
   row("notify [test]", "Unread notifications · `notify test` sends one through your rules");
+  row("budget", "Today's spend vs your caps (office · agent · project)");
+  row("budget set office 5", "Cap the office at $5/day · set agent <id> 2 · set project <id> 40 · off");
+  row("budget digest [on|off|HH:MM]", "Morning digest: yesterday's spend + what's waiting");
 
   head("Maintenance");
   row("doctor", "Diagnose why the office won't load (ports, proxy, firewall)");
@@ -367,6 +370,42 @@ async function main() {
     head(`🔔 ${j.unread} unread`);
     (j.items || []).forEach((it) => console.log(`  ${c.warn}•${c.reset} ${it.title}${c.gray}${it.body ? " — " + String(it.body).split("\n")[0].slice(0, 80) : ""}${c.reset}`));
     if (!j.unread) ok("nothing unread");
+    console.log("");
+    return;
+  }
+
+  // ---- 💸 budget -------------------------------------------------------------
+  if (cmd === "budget") {
+    if (!(await daemonUp())) return NOT_RUNNING();
+    const usd = (n) => "$" + (Math.round(Number(n || 0) * 100) / 100).toFixed(2);
+    const sub = rest[0];
+    if (sub === "set") {
+      const [scope, a, b] = rest.slice(1);
+      let patch = null;
+      if (scope === "office") patch = { office: { daily: Number(a) } };
+      else if (scope === "agent" && a) patch = { agents: { [a]: { daily: Number(b) } } };
+      else if (scope === "project" && a) patch = { projects: { [a]: { total: Number(b) } } };
+      if (!patch) return bad("usage: bagidea budget set office <usd/day> | agent <id> <usd/day> | project <id> <usd total>");
+      await req("POST", "/budget", patch);
+      ok(`cap set — ${scope}${scope !== "office" ? " " + a : ""}: ${usd(scope === "office" ? a : b)}${scope === "project" ? " total" : " / day"}`);
+      return;
+    }
+    if (sub === "off") { await req("POST", "/budget", { office: { daily: 0 } }); return ok("office cap removed (per-agent and per-project caps untouched)"); }
+    if (sub === "digest") {
+      const v = rest[1];
+      if (v === "on" || v === "off") { await req("POST", "/budget", { digest: { enabled: v === "on" } }); return ok(`digest ${v}`); }
+      if (/^\d\d:\d\d$/.test(v || "")) { await req("POST", "/budget", { digest: { enabled: true, time: v } }); return ok(`digest at ${v} every morning`); }
+      const r = await req("POST", "/budget/digest", {});
+      console.log(""); console.log(r.text.split("\n").map((l) => "  " + l).join("\n")); console.log(""); return;
+    }
+    const j = await req("GET", "/budget");
+    banner();
+    head(`💸 Today (${j.day})`);
+    const bar = (spent, cap) => cap ? `${usd(spent)} / ${usd(cap)}  ${Math.round(spent / cap * 100)}%${spent >= cap ? c.err + "  STOPPED" + c.reset : spent >= cap * j.warnAt ? c.warn + "  warning" + c.reset : ""}` : `${usd(spent)}  ${c.gray}(no cap)${c.reset}`;
+    console.log(`  office   ${bar(j.office.spent, j.office.cap)}${j.office.estimated ? c.gray + "  ≈ includes estimates" + c.reset : ""}`);
+    const agents = Object.entries(j.agents || {}); if (agents.length) { head("agents"); for (const [id, a] of agents) console.log(`  ${id.padEnd(14)} ${bar(a.spent, a.cap)}`); }
+    const projects = Object.entries(j.projects || {}); if (projects.length) { head("projects (lifetime)"); for (const [id, p] of projects) console.log(`  ${id.padEnd(14)} ${bar(p.total, p.cap)}`); }
+    info(`digest: ${j.digest.enabled ? "on at " + j.digest.time : "off"}  ·  set caps: bagidea budget set office 5`);
     console.log("");
     return;
   }
