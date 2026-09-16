@@ -4,7 +4,7 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
-## [Unreleased]
+## [1.6.2] — 🌐 A twentieth brain, and reports that come home
 
 **Added**
 - **Atlas Cloud** as a 20th built-in provider — an OpenAI-compatible
