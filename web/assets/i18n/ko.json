@@ -272,7 +272,7 @@
   "ph_template_cta": "템플릿 받기 →",
   "ph_safety": "⚠️ 플러그인은 당신의 컴퓨터에서 실제 코드를 실행합니다. 신뢰하는 것만 설치하세요; “공식” 항목은 BagIdea 팀이 관리합니다.",
   "f_brain_t": "교체 가능한 두뇌",
-  "f_brain_d": "각 에이전트를 자체 모델로 실행하세요 — 19개 공급자 내장: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code는 직접 연결, OpenAI/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks는 내장된 무의존성 프록시 경유(LiteLLM 불필요), 그리고 API 키가 필요 없는 로컬 Ollama/LM Studio. 선택기는 실시간 모델 목록을 가져오고, auto-compact는 어떤 모델에서도 긴 대화가 막히지 않게 합니다.",
+  "f_brain_d": "각 에이전트를 자체 모델로 실행하세요 — 20개 공급자 내장: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code는 직접 연결, OpenAI/Atlas Cloud/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks는 내장된 무의존성 프록시 경유(LiteLLM 불필요), 그리고 API 키가 필요 없는 로컬 Ollama/LM Studio. 선택기는 실시간 모델 목록을 가져오고, auto-compact는 어떤 모델에서도 긴 대화가 막히지 않게 합니다.",
   "f_workflow_t": "Workflow Builder",
   "f_workflow_d": "드래그 앤 드롭 캔버스에서 작업을 평이한 언어 노드로 계획하세요. Director가 당신의 흐름을 분석해 어떤 스킬, 도구, 권한, 에이전트가 필요한지 알려줍니다 — 누구나 작업을 계획하고, 실행 방법은 팀에게 맡길 수 있습니다.",
   "tour_brain_h": "어떤 모델이든, 에이전트별로",

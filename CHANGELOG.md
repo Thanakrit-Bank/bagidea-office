@@ -4,6 +4,26 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [Unreleased]
+
+**Added**
+- **Atlas Cloud** as a 20th built-in provider — an OpenAI-compatible
+  aggregator (400+ models behind one key), routed through the built-in proxy
+  like Groq or Cerebras; `vendor/model` names (`openai/gpt-4.1-mini`). Contributed
+  by @binyangzhu000-sudo ([#54](https://github.com/bagidea/bagidea-office/pull/54)).
+  The provider count is updated across the site (14 languages), the pitch deck
+  and the guides.
+
+**Fixed**
+- **A delegated result came back to the wrong thread.** `makeDelegateFilter`
+  captured the session by value; on a fresh thread that is `undefined`, and the
+  report-back 4.5 s later resolved it as "the latest thread" — which a job, a
+  heartbeat or a social turn may have moved. The filter now takes a getter and
+  resolves the thread at dispatch time; every owner-facing builder hands it
+  `() => keyRef.key`. Found and first fixed by @sbrasesco
+  ([#41](https://github.com/bagidea/bagidea-office/pull/41), part 2); guarded
+  by `report-thread.test.js`.
+
 ## [1.6.1] — 🧾 A run that dies says so
 
 **Fixed**

@@ -272,7 +272,7 @@
   "ph_template_cta": "Dapatkan template →",
   "ph_safety": "⚠️ Plugin menjalankan kode nyata di mesinmu. Instal yang kamu percaya; entri “Resmi” dikelola oleh tim BagIdea.",
   "f_brain_t": "Otak yang bisa ditukar",
-  "f_brain_d": "Jalankan setiap agen pada modelnya sendiri — 19 penyedia bawaan: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code langsung, OpenAI/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks melalui proxy bawaan tanpa dependensi (tanpa LiteLLM), dan Ollama/LM Studio lokal tanpa kunci API. Pemilih mengambil daftar model secara langsung; auto-compact menjaga obrolan panjang agar tidak macet pada model apa pun.",
+  "f_brain_d": "Jalankan setiap agen pada modelnya sendiri — 20 penyedia bawaan: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code langsung, OpenAI/Atlas Cloud/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks melalui proxy bawaan tanpa dependensi (tanpa LiteLLM), dan Ollama/LM Studio lokal tanpa kunci API. Pemilih mengambil daftar model secara langsung; auto-compact menjaga obrolan panjang agar tidak macet pada model apa pun.",
   "f_workflow_t": "Pembangun Alur Kerja",
   "f_workflow_d": "Rencanakan pekerjaan sebagai node bahasa biasa di kanvas seret-lepas. Director menganalisis alurmu dan memberi tahu skill, alat, izin, dan agen mana yang dibutuhkan — sehingga siapa pun dapat merencanakan pekerjaan dan membiarkan tim mencari cara menjalankannya.",
   "tour_brain_h": "Model apa pun, per agen",

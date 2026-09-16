@@ -272,7 +272,7 @@
   "ph_template_cta": "Lấy mẫu →",
   "ph_safety": "⚠️ Plugin chạy mã thật trên máy của bạn. Chỉ cài những plugin bạn tin tưởng; các mục “Chính thức” được nhóm BagIdea duy trì.",
   "f_brain_t": "Bộ não có thể hoán đổi",
-  "f_brain_d": "Chạy mỗi agent trên mô hình riêng của nó — 19 nhà cung cấp tích hợp sẵn: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code trực tiếp, OpenAI/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks qua một proxy tích hợp không phụ thuộc (không cần LiteLLM), và Ollama/LM Studio cục bộ không cần khóa API. Bộ chọn lấy danh sách mô hình trực tiếp; auto-compact giữ cho các cuộc trò chuyện dài không bị nghẽn trên bất kỳ mô hình nào.",
+  "f_brain_d": "Chạy mỗi agent trên mô hình riêng của nó — 20 nhà cung cấp tích hợp sẵn: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code trực tiếp, OpenAI/Atlas Cloud/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks qua một proxy tích hợp không phụ thuộc (không cần LiteLLM), và Ollama/LM Studio cục bộ không cần khóa API. Bộ chọn lấy danh sách mô hình trực tiếp; auto-compact giữ cho các cuộc trò chuyện dài không bị nghẽn trên bất kỳ mô hình nào.",
   "f_workflow_t": "Trình xây dựng quy trình",
   "f_workflow_d": "Lập kế hoạch công việc dưới dạng các node ngôn ngữ thường trên một canvas kéo-thả. Director phân tích luồng của bạn và cho biết nó cần những kỹ năng, công cụ, quyền và agent nào — để bất kỳ ai cũng có thể lập kế hoạch công việc và để nhóm tự tìm ra cách thực hiện.",
   "tour_brain_h": "Bất kỳ mô hình nào, cho từng agent",

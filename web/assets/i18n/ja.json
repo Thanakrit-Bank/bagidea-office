@@ -272,7 +272,7 @@
   "ph_template_cta": "テンプレートを入手 →",
   "ph_safety": "⚠️ プラグインはあなたのマシンで実際のコードを実行します。信頼できるものだけをインストールしてください。「公式」エントリは BagIdea チームが管理しています。",
   "f_brain_t": "差し替え可能な頭脳",
-  "f_brain_d": "各エージェントを独自のモデルで動かせます — 19 プロバイダーを内蔵：Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code は直接、OpenAI/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks は内蔵のゼロ依存プロキシ経由（LiteLLM 不要）、そして API キー不要のローカル Ollama/LM Studio。ピッカーはライブのモデルリストを取得し、auto-compact がどのモデルでも長いチャットの詰まりを防ぎます。",
+  "f_brain_d": "各エージェントを独自のモデルで動かせます — 20 プロバイダーを内蔵：Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code は直接、OpenAI/Atlas Cloud/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks は内蔵のゼロ依存プロキシ経由（LiteLLM 不要）、そして API キー不要のローカル Ollama/LM Studio。ピッカーはライブのモデルリストを取得し、auto-compact がどのモデルでも長いチャットの詰まりを防ぎます。",
   "f_workflow_t": "Workflow Builder",
   "f_workflow_d": "ドラッグ＆ドロップのキャンバスで、作業を平易な言葉のノードとして計画します。Director があなたのフローを分析し、どのスキル・ツール・権限・エージェントが必要かを伝えます — だれもが作業を計画でき、その実行方法はチームに任せられます。",
   "tour_brain_h": "どんなモデルでも、エージェントごとに",

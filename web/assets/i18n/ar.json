@@ -272,7 +272,7 @@
   "ph_template_cta": "احصل على القالب →",
   "ph_safety": "⚠️ الإضافات تشغّل كوداً حقيقياً على جهازك. ثبّت ما تثق به؛ مدخلات «رسمي» يصونها فريق BagIdea.",
   "f_brain_t": "أدمغة قابلة للتبديل",
-  "f_brain_d": "شغّل كل وكيل على نموذجه الخاص — 19 مزوّداً مدمجاً: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code مباشرةً، وOpenAI/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks عبر وكيل (proxy) مدمج بلا اعتماديات (بدون LiteLLM)، وOllama/LM Studio محلياً بلا مفتاح API. تجلب أدوات الاختيار قوائم النماذج الحيّة؛ ويمنع الضغط التلقائي تكدّس المحادثات الطويلة على أي نموذج.",
+  "f_brain_d": "شغّل كل وكيل على نموذجه الخاص — 20 مزوّداً مدمجاً: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code مباشرةً، وOpenAI/Atlas Cloud/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks عبر وكيل (proxy) مدمج بلا اعتماديات (بدون LiteLLM)، وOllama/LM Studio محلياً بلا مفتاح API. تجلب أدوات الاختيار قوائم النماذج الحيّة؛ ويمنع الضغط التلقائي تكدّس المحادثات الطويلة على أي نموذج.",
   "f_workflow_t": "منشئ سير العمل",
   "f_workflow_d": "خطّط العمل كعُقد بلغة بسيطة على لوحة سحب وإفلات. يحلّل الـ Director تدفّقك ويخبرك بالمهارات والأدوات والأذونات والوكلاء التي يحتاجها — حتى يستطيع أي شخص تخطيط العمل وترك الفريق يكتشف كيفية تشغيله.",
   "tour_brain_h": "أي نموذج، لكل وكيل",

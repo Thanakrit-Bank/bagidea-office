@@ -272,7 +272,7 @@
   "ph_template_cta": "Obtenha o template →",
   "ph_safety": "⚠️ Plugins executam código real na sua máquina. Instale apenas os que você confia; entradas “Oficial” são mantidas pela equipe BagIdea.",
   "f_brain_t": "Cérebros intercambiáveis",
-  "f_brain_d": "Execute cada agente no seu próprio modelo — 19 provedores integrados: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code diretos, OpenAI/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks via um proxy integrado sem dependências (sem LiteLLM), e Ollama/LM Studio locais sem chave de API. Os seletores buscam listas de modelos ao vivo; o auto-compactação evita que conversas longas travem em qualquer modelo.",
+  "f_brain_d": "Execute cada agente no seu próprio modelo — 20 provedores integrados: Claude/GLM/DeepSeek/Qwen/MiniMax/Kimi/Kimi Code diretos, OpenAI/Atlas Cloud/Gemini/OpenRouter/NVIDIA/Groq/Cerebras/xAI/Mistral/Together/Fireworks via um proxy integrado sem dependências (sem LiteLLM), e Ollama/LM Studio locais sem chave de API. Os seletores buscam listas de modelos ao vivo; o auto-compactação evita que conversas longas travem em qualquer modelo.",
   "f_workflow_t": "Workflow Builder",
   "f_workflow_d": "Planeje o trabalho como nós em linguagem natural num canvas de arrastar e soltar. O Director analisa o seu fluxo e diz quais habilidades, ferramentas, permissões e agentes ele precisa — para que qualquer pessoa possa planejar o trabalho e deixar a equipe descobrir como executá-lo.",
   "tour_brain_h": "Qualquer modelo, por agente",
