@@ -2934,7 +2934,7 @@ function ceoFlow(prompt, session, project, opts = {}) {
   // 🤖 AUTO: a fresh order starts a fresh chain (the round budget resets), and if
   // the Director ends this turn still owing work, it opens the next turn itself.
   const keyRef = { key: session || "" }, dele = { hit: false };
-  const df = makeDelegateFilter(0, session, () => { dele.hit = true; });
+  const df = makeDelegateFilter(0, () => keyRef.key, () => { dele.hit = true; });
   return runClaude("main", wrapped, {
     session,
     project,
@@ -3085,6 +3085,13 @@ function autoContinue(agent, project, keyRef, next, isDirector, dele) {
 // DELEGATE:-line parser shared by the CEO order and every report-back turn.
 // onHit fires per dispatched assignment ("did he hand off more work?").
 function makeDelegateFilter(depth, session, onHit) {
+  // `session` may be a string or a GETTER. On the owner-facing paths the filter is
+  // built before the run starts, when a fresh thread has no key yet; a value frozen
+  // then is `undefined`, and the report-back 4.5 s later resolves it as "the latest
+  // thread" — which a job, a heartbeat or a social turn may have moved. A getter
+  // reads keyRef at dispatch time, so the result comes home to the thread the order
+  // was given on. (PR #41 — found and first fixed by @sbrasesco.)
+  const sessionNow = () => (typeof session === "function" ? (session() || undefined) : session);
   return (text) => {
     const keep = [];
     for (const ln of String(text).split("\n")) {
@@ -3116,15 +3123,15 @@ function makeDelegateFilter(depth, session, onHit) {
         if (onHit) onHit();
         notifyChannels(`🧑‍💻 → Codex${projName ? " @ " + projName : ""}: ${inst.slice(0, 200)}`);
         let card = null;
-        try { card = tasks.create({ title: "🧑‍💻 " + inst.slice(0, 120), detail: inst, kind: "delegation", owner: "main", project: projName, status: "doing", source: { kind: "codex", ref: session || "" } }); } catch {}
+        try { card = tasks.create({ title: "🧑‍💻 " + inst.slice(0, 120), detail: inst, kind: "delegation", owner: "main", project: projName, status: "doing", source: { kind: "codex", ref: sessionNow() || "" } }); } catch {}
         Promise.resolve().then(() => codexMission("exec", { task: inst, project: projName }, "main"))
           .then((r) => {
             if (card) { try { tasks.move(card.id, r.ok ? "done" : "waiting"); } catch {} }
             const text = (r.ok ? r.text : ("Codex failed: " + (r.error || "unknown error") + (r.text ? "\n" + r.text : ""))) +
               (r.diff && r.diff.files ? `\n\n[changes in ${r.diff.project || projName || "the workspace"}: ${r.diff.files} file(s) — ${r.diff.summary || ""}]` : "\n\n[no file changes]");
-            reportToMain("codex", text, !!r.ok, depth, session);
+            reportToMain("codex", text, !!r.ok, depth, sessionNow());
           })
-          .catch((e) => { if (card) { try { tasks.move(card.id, "waiting"); } catch {} } reportToMain("codex", "Codex could not run: " + (e && e.message), false, depth, session); });
+          .catch((e) => { if (card) { try { tasks.move(card.id, "waiting"); } catch {} } reportToMain("codex", "Codex could not run: " + (e && e.message), false, depth, sessionNow()); });
         continue;
       }
       // Accept the agent id OR its display name (models love names).
@@ -3158,13 +3165,13 @@ function makeDelegateFilter(depth, session, onHit) {
           // (and the two never collide inside one working tree).
           if (proj && projWin[proj]) {
             reportToMain(t, `The owner currently has project "${projName || proj}" open in a window — ` +
-              `it cannot be entered right now; wait until the owner closes that window.`, false, depth, session);
+              `it cannot be entered right now; wait until the owner closes that window.`, false, depth, sessionNow());
             return;
           }
           // 📋 A delegation is a card on the board, owned by the assignee, from
           // "doing" to "done" (or "waiting" when the task failed and needs a human).
           let card = null;
-          try { card = tasks.create({ title: inst.replace(/\s+/g, " ").slice(0, 120), detail: inst, kind: "delegation", owner: t, project: proj ? ((projects.find((p) => p.id === proj) || {}).name || proj) : "", status: "doing", source: { kind: "delegation", ref: (session || "") + ":" + Date.now() } }); } catch {}
+          try { card = tasks.create({ title: inst.replace(/\s+/g, " ").slice(0, 120), detail: inst, kind: "delegation", owner: t, project: proj ? ((projects.find((p) => p.id === proj) || {}).name || proj) : "", status: "doing", source: { kind: "delegation", ref: (sessionNow() || "") + ":" + Date.now() } }); } catch {}
           const tl = sess[t] || [];
           const te = tl.length ? tl.reduce((a, b) => (a.ts > b.ts ? a : b)) : null;
           // Carry the autonomy mandate on both the first run AND any auto-resume.
@@ -3178,7 +3185,7 @@ function makeDelegateFilter(depth, session, onHit) {
             resumable: true, resumePrompt: dinst,   // delegated work auto-resumes after a limit/restart
             onDone: (out, ok) => {
               if (card) { try { tasks.move(card.id, ok ? "done" : "waiting"); } catch {} }
-              verifyThenReport(t, inst, out, ok, depth, session, proj);
+              verifyThenReport(t, inst, out, ok, depth, sessionNow(), proj);
             },
           });
         }, 4500);
@@ -3250,7 +3257,7 @@ function reportToMain(fromId, text, ok, depth, session) {
   queueDirectorTurn((release) => {
     const dele = { hit: false };
     const keyRef = { key: session || "" };
-    const df = depth < 2 ? makeDelegateFilter(depth + 1, session, () => { dele.hit = true; }) : null;
+    const df = depth < 2 ? makeDelegateFilter(depth + 1, () => keyRef.key, () => { dele.hit = true; }) : null;
     runClaude("main", wrapped + autoNote(), {
       session,
       noSub: true,
@@ -4362,6 +4369,7 @@ function decideProposal(p, decision, message) {
       proj = createProject(p.name, "", path.join(playDir, p.name.replace(/[^\wก-๙ -]/g, "_")));
     } catch (e) { /* duplicate name → Director routes to the existing one */ }
     queueDirectorTurn((release) => {
+      const pKey = { key: "" };
       runClaude("main",
         `The CEO approved the team's project proposal 🎉\n` +
         `Name: ${p.name}\nIdea: ${p.detail}\nProposed by: ${p.agents.join(", ")}\n` + noteLine +
@@ -4373,7 +4381,8 @@ function decideProposal(p, decision, message) {
         `let the people who proposed the idea lead it, then summarize the plan briefly` +
         (note ? `, steering the work by the owner's note` : "") + `.`,
         { logPrompt: `✅ อนุมัติข้อเสนอ: ${p.name}`,
-          filterText: makeDelegateFilter(0, undefined),
+          filterText: makeDelegateFilter(0, () => pKey.key),
+          onEntry: (k) => { pKey.key = k; },
           onDone: () => release() });
     });
   } else if (decision === "reject" && note) {
@@ -4903,7 +4912,7 @@ const server = http.createServer((req, res) => {
                 onDone: reply })
           : agent === "main"
             ? (() => {
-                const df = makeDelegateFilter(0, session, () => { dele.hit = true; });
+                const df = makeDelegateFilter(0, () => keyRef.key, () => { dele.hit = true; });
                 return runClaude("main", prompt + directorNote() + autoNote(),
                   { session, project, logPrompt: origPrompt, qvec,
                     filterText: (t) => stripStatus(df(t)),
