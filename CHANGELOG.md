@@ -4,6 +4,28 @@ All notable changes to BagIdea Office. A **release** is a deliberate `VERSION`
 bump on `main` (see [RELEASING.md](RELEASING.md)) — that's what triggers the
 in-app 🔄 update banner. Versions follow [semver](https://semver.org).
 
+## [Unreleased]
+
+**Fixed**
+- **Local models died on the first tool call.** Claude Code (≥ 2.1.2xx) puts
+  reminder entries with `role: "system"` inside `messages[]` (the agent-type
+  list, `<total_tokens>`, …). The proxy forwarded them as mid-conversation
+  system messages — and turned block-form ones into *assistant* turns. OpenAI
+  tolerates that; strict chat templates (Qwen3.5 and friends on LM Studio /
+  llama.cpp / Ollama / vLLM) answer "System message must be at the beginning"
+  with a hard 500 on every turn after the first tool call. `toOpenAI` now
+  emits at most one system message, at index 0: leading entries join the top
+  system prompt, later ones fold into the adjacent user turn as a
+  `<system-reminder>` (or the next user turn, or a final one after tool
+  replies), message order and tool-call ids untouched, the input never mutated.
+  Nine new tests. Contributed by @f2dac
+  ([#56](https://github.com/bagidea/bagidea-office/pull/56)).
+
+**Changed**
+- `docs/guide/updates.md` describes the release plan as it actually is:
+  releases are cut from `main`; `dev` is kept in sync
+  ([#55](https://github.com/bagidea/bagidea-office/pull/55), @f2dac).
+
 ## [1.6.2] — 🌐 A twentieth brain, and reports that come home
 
 **Added**

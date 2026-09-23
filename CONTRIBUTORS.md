@@ -79,6 +79,7 @@ Your plugin's own code lives in your own repo, where you're of course the author
   and save runs as reusable regression test cases.
 - **[@binyangzhu000-sudo](https://github.com/binyangzhu000-sudo)** — the Atlas Cloud model provider, routed through the built-in proxy ([#54](https://github.com/bagidea/bagidea-office/pull/54)).
 - **[@sbrasesco](https://github.com/sbrasesco)** (Sergio Brasesco) — found and first fixed the report-back that landed in the wrong thread, and the security probing behind it ([#41](https://github.com/bagidea/bagidea-office/pull/41)).
+- **[@f2dac](https://github.com/f2dac)** — the proxy's system-message normalization for strict chat templates, so local models on LM Studio / llama.cpp / Ollama survive the first tool call ([#56](https://github.com/bagidea/bagidea-office/pull/56)), and the dev-branch sync ([#55](https://github.com/bagidea/bagidea-office/pull/55)).
 
 ## Built with Claude Code
 
