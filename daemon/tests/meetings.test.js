@@ -26,8 +26,7 @@ const DAEMON_DIR = path.join(__dirname, "..");   // the real daemon/ we're testi
 // secretary prompt (detected by the word "secretary") — markdown minutes plus a
 // fenced JSON actionItems array. This is what makes the test deterministic and
 // free: no model, no network.
-const CLAUDE_STUB = `#!/usr/bin/env node
-let s = ""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => {
+const CLAUDE_STUB = `let s = ""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => {
   const reply = () => {
     if (/secretary/i.test(s)) {
       process.stdout.write(
@@ -77,16 +76,24 @@ async function bootIsolated(opts = {}) {
   fs.writeFileSync(path.join(ws, "memory", "nida.md"), "Nida remembers: prefer tests.");
   // The daemon reads registry.json from its OWN dir (daemon/registry.json).
   fs.writeFileSync(path.join(tmp, "daemon", "registry.json"), JSON.stringify(stubRegistry()));
-  // Fake claude on a PATH that wins.
+  // Fake claude on a PATH that wins. The daemon calls it as spawn("claude",
+  // …, { shell: true }), so the stub has to be whatever THIS shell can launch:
+  // sh finds the extension-less file and honours its shebang; cmd.exe never
+  // finds a file with no extension and resolves "claude" through PATHEXT — so
+  // Windows needs a .cmd shim that hands the same body to node. Both are
+  // written every time; each OS only ever looks at its own.
   const bin = path.join(tmp, "bin");
   fs.mkdirSync(bin, { recursive: true });
-  fs.writeFileSync(path.join(bin, "claude"), CLAUDE_STUB);
+  fs.writeFileSync(path.join(bin, "claude"), "#!/usr/bin/env node\n" + CLAUDE_STUB);
   fs.chmodSync(path.join(bin, "claude"), 0o755);
+  fs.writeFileSync(path.join(bin, "claude.js"), CLAUDE_STUB);
+  fs.writeFileSync(path.join(bin, "claude.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0claude.js" %*\r\n`);
 
   const port = 19000 + Math.floor(Math.random() * 999);
   const child = spawn(process.execPath, [path.join(tmp, "daemon", "server.js")], {
     env: { ...process.env, OEP_PORT: String(port),
-      PATH: `${bin}:${process.env.PATH}`,
+      PATH: bin + path.delimiter + process.env.PATH,
       ...(opts.slowMs ? { OFFICE_TEST_SLOW_MS: String(opts.slowMs) } : {}) },
     stdio: ["ignore", "pipe", "pipe"]
   });
