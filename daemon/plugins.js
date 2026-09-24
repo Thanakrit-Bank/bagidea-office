@@ -11,6 +11,10 @@
 //     "description": "...", "panel": "panel.html",
 //     "commands": [{ "name":"play", "args":"<query>", "desc":"play a track" }],
 //     "needsKeys": []            // main keys this plugin requires (optional)
+//     "hooks": [                 // Claude Code hooks this plugin owns (optional)
+//       { "event":"PreToolUse", "matcher":"mcp__Roblox_Studio__.*",
+//         "command":"hook/pretooluse.js", "timeout":10 }   // command is relative to the plugin folder
+//     ]
 //   }
 //
 // index.js exports: (ctx) => ({ routes?, onCommand?(cmd, args, reply), onEvent?(type, evt) })
@@ -27,6 +31,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { wirePluginHooks } = require("./plugin-hooks");
 
 // Syntax-check a plugin's index.js with `node --check` BEFORE require(), so a
 // broken file (unbalanced brace, stray token…) is rejected up front with a clear
@@ -153,6 +158,20 @@ module.exports = function initPlugins(ctx) {
       loadedCount++;
       ctx.log("[plugin] loaded " + manifest.id + " v" + (manifest.version || "?"));
     }
+    // Plugins own Claude Code hooks too — studio-lease's PreToolUse gate,
+    // run-clock's PostToolUse ticker. Since cae15ed the workspace settings.json
+    // is per-machine config that git does not carry, and the installer rebuilds
+    // only the entries IT owns, so each plugin re-registers its own here on
+    // every load. Merged in place (see plugin-hooks.js): nothing else in the
+    // file moves, an entry already present is not rewritten, and a failure is a
+    // log line — hook wiring must never stop the office from coming up.
+    try {
+      const wired = wirePluginHooks(ctx.workspace, Object.values(plugins).map((p) => ({ manifest: p.manifest, dir: p.dir })));
+      for (const s of wired.skipped) ctx.log("[plugin] hook skipped " + (s.id ? s.id + ": " : "") + s.reason);
+      if (wired.wrote) ctx.log("[plugin] hooks wired — " + wired.added.length + " added, " +
+        wired.updated.length + " updated, " + wired.unchanged.length + " already there");
+    } catch (err) { ctx.log("[plugin] hook wiring failed: " + (err && err.message)); }
+
     lastLoad = { loaded: loadedCount, failed };
     return lastLoad;
   }

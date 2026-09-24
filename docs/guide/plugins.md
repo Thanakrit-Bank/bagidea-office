@@ -81,6 +81,40 @@ A plugin needs **only** `plugin.json`. Add `index.js` for server power, and/or
 | `commands` | what **agents** can call — each `{name, args, desc}` |
 | `needsKeys` | main API key names this plugin needs (informational) |
 | `enabled` | set `false` to ship-but-disable |
+| `hooks` | *(optional)* Claude Code hooks this plugin owns — see below |
+
+### `hooks` — a plugin registers its own Claude Code hooks
+
+A plugin that ships a hook script (a PreToolUse gate, a PostToolUse ticker…)
+declares it here, and the loader wires it into `workspace/.claude/settings.json`
+on every load:
+
+```json
+"hooks": [
+  { "event": "PreToolUse", "matcher": "mcp__Roblox_Studio__.*",
+    "command": "hook/pretooluse.js", "timeout": 10 }
+]
+```
+
+| key | meaning |
+|---|---|
+| `event` | `PreToolUse`, `PostToolUse`, `UserPromptSubmit`, `Stop`, `SubagentStop`, `Notification`, `PreCompact`, `SessionStart`, `SessionEnd`. An event outside that list is refused and logged — a typo must not wire a rail nothing reads. |
+| `command` | path to the hook script **relative to your plugin folder**. It is resolved to this install's absolute path at load time and run as `node "<abs path>"`. |
+| `matcher` | *(optional)* the tool-name regex Claude Code scopes the hook to. Leave it out to fire on everything. |
+| `timeout` | *(optional)* seconds, passed straight through. |
+
+Why declare it instead of editing `settings.json` yourself: that file is
+**per-machine config** and is not in git (it holds absolute paths), so a fresh
+clone has only what the installer writes back — its own entries. Declaring the
+hook is what brings yours back on someone else's machine.
+
+The merge is idempotent and additive: an entry already present is left byte for
+byte alone, a stale absolute path is refreshed **in place** (so ordering never
+drifts), everything else in the file — other entries, other events, other
+top-level keys — is untouched, and a `settings.json` that does not parse is left
+for a human rather than rebuilt. A hook whose file is not on disk is skipped
+with a log line, never written: an entry pointing at a missing script is a hook
+that fails at spawn time.
 
 ---
 
