@@ -41,11 +41,16 @@ git config core.fscache true   2>$null
 git config core.longpaths true 2>$null
 
 # 2) Pull the latest code.
-#    The two settings.json are tracked but get rewritten per-machine (hook paths),
-#    so discard those local edits first or --ff-only would abort when upstream
-#    also touched them. We re-wire the hooks right after the pull.
+#    NOTE: do NOT 'git checkout --' the two .claude/settings.json here. They are
+#    tracked, but HEAD only holds an empty {"hooks":{}} placeholder, while the live
+#    files carry this machine's wiring: the installer hooks AND every hook an office
+#    plugin registered (studio-lease PreToolUse, run-clock PostToolUse). Reverting
+#    them to HEAD right before wiring wiped the whole set on every update - that is
+#    how the hooks were lost on 2026-09-24. wire-hooks.ps1 below MERGES its entries
+#    into whatever is already in the files, so there is nothing to discard first.
+#    If a future upstream commit ever touches them, --ff-only stops with a clear
+#    message: resolve that by hand, never by reverting the live hooks.
 Write-Host "  [2/4] Pulling latest code..." -ForegroundColor DarkCyan
-git checkout -- .claude/settings.json workspace/.claude/settings.json 2>$null
 $before = git rev-parse HEAD
 git -c gc.auto=0 pull --ff-only
 $after = git rev-parse HEAD
