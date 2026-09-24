@@ -45,8 +45,23 @@ function repoRoot(dir) {
 
 // Worktrees live beside the office, not inside the owner's project: a stray
 // directory in their repo is the kind of mess that gets a feature switched off.
+//
+// BAGIDEA_WORKTREE_HOME redirects it. The default is ONE directory shared by
+// every process on the machine, and sweep() empties whatever it finds there —
+// so a second office, or a parallel test run, would delete checkouts that are
+// very much alive. Anything that needs its own home sets that variable.
+//
+// os.tmpdir() can also hand back a Windows 8.3 short path (C:/Users/ADMINI~1)
+// while git reports the long one. Two spellings of one directory is exactly how
+// a live worktree fails the liveDirs check and gets swept, so the home is
+// canonicalised here, once.
+function canonical(p) {
+  try { return fs.realpathSync.native(p); } catch { return path.resolve(p); }
+}
 function worktreeHome() {
-  return path.join(os.tmpdir(), "bagidea-office-ghosts");
+  const override = process.env.BAGIDEA_WORKTREE_HOME;
+  if (override) return canonical(path.resolve(override));
+  return path.join(canonical(os.tmpdir()), "bagidea-office-ghosts");
 }
 
 // The id becomes both a directory name and a git branch name, and git's rules
@@ -175,18 +190,50 @@ function settle(wt, label) {
 
 // Housekeeping: anything left by a run that died before it could settle. Only
 // touches directories under our own temp home, and never a live one.
-function sweep(liveDirs = new Set()) {
-  let home;
-  try { home = worktreeHome(); if (!fs.existsSync(home)) return 0; } catch { return 0; }
-  let n = 0;
-  for (const name of fs.readdirSync(home)) {
+//
+// Returns { home, removed, failed, errors } — failures are reported, not
+// swallowed. A directory this cannot clear does not disappear quietly: it stays
+// in the home, and the next run of that ghost id trips over it. The caller
+// decides how loud to be; opts.strict makes it throw instead.
+//   opts.log    — where to write a line per failure (null silences it)
+//   opts.strict — throw after the pass when anything failed
+function sweep(liveDirs = new Set(), opts = {}) {
+  const log = opts.log === undefined ? (m) => console.error(m) : opts.log;
+  const res = { home: null, removed: 0, failed: 0, errors: [] };
+  const fail = (dir, e) => {
+    res.failed++;
+    const msg = (e && e.message) || String(e);
+    res.errors.push({ dir, error: msg });
+    if (log) log("[worktree] sweep could not clear " + dir + ": " + msg);
+  };
+  let home, names;
+  try {
+    home = res.home = worktreeHome();
+    if (!fs.existsSync(home)) return res;
+    names = fs.readdirSync(home);
+  } catch (e) {
+    fail(home || String(opts.home || "(unknown home)"), e);
+    if (opts.strict) throw new Error(res.errors[0].error);
+    return res;
+  }
+  for (const name of names) {
     const dir = path.join(home, name);
     if (liveDirs.has(dir)) continue;
     const repo = repoRoot(dir);
-    if (repo) { try { execFileSync("git", ["-C", repo, "worktree", "remove", "--force", dir], RUN); n++; continue; } catch {} }
-    try { fs.rmSync(dir, { recursive: true, force: true }); n++; } catch {}
+    let gitErr = null;
+    if (repo) {
+      try {
+        execFileSync("git", ["-C", repo, "worktree", "remove", "--force", dir], RUN);
+        res.removed++; continue;
+      } catch (e) { gitErr = e; }   // fall through: the plain delete may still work
+    }
+    try { fs.rmSync(dir, { recursive: true, force: true }); res.removed++; }
+    catch (e) { fail(dir, gitErr ? new Error(gitErr.message + " / " + e.message) : e); }
   }
-  return n;
+  if (opts.strict && res.failed)
+    throw new Error("worktree sweep left " + res.failed + " checkout(s): "
+      + res.errors.map((x) => x.dir + " (" + x.error + ")").join("; "));
+  return res;
 }
 
 module.exports = { repoRoot, create, changes, keep, remove, settle, sweep,

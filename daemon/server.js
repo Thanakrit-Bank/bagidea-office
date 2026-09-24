@@ -8199,8 +8199,10 @@ server.listen(OEP_PORT, "127.0.0.1", () => {
     // Nothing is live yet, so every checkout under the ghost home is abandoned
     // — a ghost settles its own on the way out, success or failure alike, so
     // the only way one survives is the office being killed mid-run.
-    const n = worktree.sweep(new Set());
-    if (n) console.log("[worktree] swept " + n + " abandoned ghost checkout(s)");
+    const swept = worktree.sweep(new Set());
+    if (swept.removed) console.log("[worktree] swept " + swept.removed + " abandoned ghost checkout(s)");
+    if (swept.failed) console.error("[worktree] sweep left " + swept.failed
+      + " checkout(s) behind: " + swept.errors.map((x) => x.dir).join(", "));
   } catch (e) { console.error("[worktree] sweep:", e.message); }
 });
 
