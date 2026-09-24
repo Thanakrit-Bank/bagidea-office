@@ -114,10 +114,10 @@ async function bootIsolated(opts = {}) {
   };
 }
 
-function req(base, method, pathStr, body) {
+function req(base, method, pathStr, body, headers) {
   return new Promise((resolve, reject) => {
     const r = http.request(`${base}${pathStr}`, {
-      method, headers: body ? { "content-type": "application/json" } : {}
+      method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...(headers || {}) }
     }, (res) => {
       let d = ""; res.on("data", (c) => d += c); res.on("end", () => {
         let j = null; try { j = JSON.parse(d); } catch {}
@@ -129,6 +129,12 @@ function req(base, method, pathStr, body) {
     r.end();
   });
 }
+
+// /discuss/message and /discuss/control are owner-only: the daemon refuses them
+// with 403 unless the caller sends the x-bagidea-ui header, so an agent cannot
+// forge a CEO line or quietly end a discussion. These tests ARE the owner, so
+// they go through this helper; every other call stays header-less on purpose.
+const ui = (base, pathStr, body) => req(base, "POST", pathStr, body, { "x-bagidea-ui": "1" });
 
 // Start a 2-agent, 1-round meeting and resolve with its session key + a poller.
 async function startMeeting(base) {
@@ -195,7 +201,11 @@ test("POST /discuss/message injects a CEO line (phase:user); 404 when not live",
   const d = await bootIsolated();
   try {
     const session = await startMeeting(d.url);
-    const r = await req(d.url, "POST", "/discuss/message",
+    // An agent (no UI header) must not be able to speak as the CEO.
+    const forged = await req(d.url, "POST", "/discuss/message",
+      { session, text: "Not the owner." });
+    assert.strictEqual(forged.status, 403, "only the human UI may inject a CEO line");
+    const r = await ui(d.url, "/discuss/message",
       { session, text: "Owner weighs in." });
     assert.strictEqual(r.status, 200, "owner message to a live meeting is accepted");
     const log = await waitForMessages(d.url, session, 3);
@@ -211,14 +221,14 @@ test("live controls: pause holds, resume continues, end exits cleanly", async ()
     const session = await startMeeting(d.url);
     // Pause: the next turn must not start. We assert by sending a control and
     // checking the response echoes paused state.
-    const p = await req(d.url, "POST", "/discuss/control", { session, action: "pause" });
+    const p = await ui(d.url, "/discuss/control", { session, action: "pause" });
     assert.strictEqual(p.status, 200);
     assert.strictEqual(p.data.paused, true, "control must report paused:true");
     // Resumed.
-    const rs = await req(d.url, "POST", "/discuss/control", { session, action: "resume" });
+    const rs = await ui(d.url, "/discuss/control", { session, action: "resume" });
     assert.strictEqual(rs.data.paused, false, "control must report paused:false after resume");
     // End: the meeting must terminate (live flips to false).
-    const end = await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    const end = await ui(d.url, "/discuss/control", { session, action: "end" });
     assert.strictEqual(end.data.ended, true);
     await waitForEnd(d.url, session);
   } finally { d.stop(); }
@@ -231,7 +241,7 @@ test("on end the meeting writes summary minutes + a validated .actions.json", as
     session = await startMeeting(d.url);
     // Let it produce opening lines, then end so the summary secretary runs.
     await waitForMessages(d.url, session, 2);
-    await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    await ui(d.url, "/discuss/control", { session, action: "end" });
     await waitForEnd(d.url, session);
   } finally { d.stop(); }
   // The daemon is stopped, but the meeting artifacts live on disk under tmp.
@@ -256,9 +266,9 @@ test("POST /discuss/message on a finished meeting returns 404", async () => {
   try {
     const session = await startMeeting(d.url);
     await waitForMessages(d.url, session, 2);
-    await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    await ui(d.url, "/discuss/control", { session, action: "end" });
     await waitForEnd(d.url, session);
-    const r = await req(d.url, "POST", "/discuss/message", { session, text: "late" });
+    const r = await ui(d.url, "/discuss/message", { session, text: "late" });
     assert.strictEqual(r.status, 404, "message to a non-live meeting must 404");
   } finally { d.stop(); }
 });
@@ -275,7 +285,7 @@ test("End pressed mid-turn drops the lagging reply (no ghost message after close
     const session = await startMeeting(d.url);
     const mdPath = path.join(meetDir, `${session}.md`);
     await new Promise((r) => setTimeout(r, 150));
-    await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    await ui(d.url, "/discuss/control", { session, action: "end" });
     for (let i = 0; i < 60 && !fs.existsSync(mdPath); i++)
       await new Promise((r) => setTimeout(r, 250));
     assert.ok(fs.existsSync(mdPath), "minutes must be written even after a quick End");
