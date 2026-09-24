@@ -8166,6 +8166,16 @@ function gracefulShutdown(sig) {
 }
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+// Windows has no POSIX signals. A parent that "sends SIGTERM" there is really
+// calling TerminateProcess, which runs none of the handlers above — so every
+// claude child we spawned survives us, still talking to the proxy, and the next
+// daemon boots with an empty runChildren map and no way to find them. That is
+// exactly the orphaning issue #15 closed on Linux and left open here. An IPC
+// stop request reaches the SAME handler on every OS, so a parent that wants us
+// gone cleanly can always ask. Only wired when we were started with a channel;
+// the shell spawns us without one, so an ordinary launch is unchanged.
+if (typeof process.send === "function")
+  process.on("message", (m) => { if (m && m.type === "shutdown") gracefulShutdown("stop request"); });
 
 server.on("error", (e) => {
   // Most likely EADDRINUSE — another daemon already holds :8787. Exit cleanly
@@ -8199,8 +8209,10 @@ server.listen(OEP_PORT, "127.0.0.1", () => {
     // Nothing is live yet, so every checkout under the ghost home is abandoned
     // — a ghost settles its own on the way out, success or failure alike, so
     // the only way one survives is the office being killed mid-run.
-    const n = worktree.sweep(new Set());
-    if (n) console.log("[worktree] swept " + n + " abandoned ghost checkout(s)");
+    const swept = worktree.sweep(new Set());
+    if (swept.removed) console.log("[worktree] swept " + swept.removed + " abandoned ghost checkout(s)");
+    if (swept.failed) console.error("[worktree] sweep left " + swept.failed
+      + " checkout(s) behind: " + swept.errors.map((x) => x.dir).join(", "));
   } catch (e) { console.error("[worktree] sweep:", e.message); }
 });
 

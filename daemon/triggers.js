@@ -198,7 +198,16 @@ module.exports = function initTriggers(ctx) {
     try {
       if (!fs.existsSync(t.cfg.dir)) return;
       const re = globToRe(t.cfg.glob);
-      const w = fs.watch(t.cfg.dir, (ev, name) => {
+      // Watch the CANONICAL path, never the one the owner typed. On Windows a
+      // path may carry an 8.3 short component (os.tmpdir() is literally
+      // C:\Users\ADMINI~1\... ) and libuv expands every event back to its long
+      // form, then asserts the result still starts with the directory it was
+      // handed — it does not, and that assert aborts the whole process. There is
+      // no 'error' event to catch: the daemon simply dies. realpath hands libuv
+      // the same spelling it will compute, so the assert holds.
+      let watchDir = t.cfg.dir;
+      try { watchDir = fs.realpathSync.native(t.cfg.dir); } catch {}
+      const w = fs.watch(watchDir, (ev, name) => {
         if (!name || !re.test(String(name))) return;
         const key = t.id + "|" + name;
         clearTimeout(debounce.get(key));

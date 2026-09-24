@@ -17,6 +17,18 @@ const git = (dir, ...a) => execFileSync("git", ["-C", dir, ...a], RUN).trim();
 let hasGit = true;
 try { execFileSync("git", ["--version"], RUN); } catch { hasGit = false; }
 
+// This process gets its OWN worktree home. The module default is one directory
+// shared by everything on the machine and sweep() empties whatever it finds
+// there — node --test runs test FILES in parallel, so without this a sweep in
+// one file deletes the checkout another file is mid-assertion on. That is the
+// random failure this isolation exists to remove.
+const HOME = fs.mkdtempSync(path.join(os.tmpdir(), "bagidea-wt-home-"));
+process.env.BAGIDEA_WORKTREE_HOME = HOME;
+
+// os.tmpdir() may be a Windows 8.3 short path while git reports the long one;
+// compare canonical spellings or every path assertion here is a coin toss.
+const real = (p) => { try { return fs.realpathSync.native(p); } catch { return path.resolve(p); } };
+
 const made = [];
 function newRepo() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bagidea-wt-test-"));
@@ -31,10 +43,9 @@ function newRepo() {
 }
 
 test.after(() => {
-  for (const d of made) {
-    try { W.sweep(new Set()); } catch {}
-    try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
-  }
+  try { W.sweep(new Set(), { log: null }); } catch {}
+  for (const d of made) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} }
+  try { fs.rmSync(HOME, { recursive: true, force: true }); } catch {}
 });
 
 test("repoRoot: a plain directory is not a repository", { skip: !hasGit }, () => {
@@ -47,7 +58,7 @@ test("repoRoot: finds the top of the repo from a subdirectory", { skip: !hasGit 
   const repo = newRepo();
   const sub = path.join(repo, "src", "deep");
   fs.mkdirSync(sub, { recursive: true });
-  assert.strictEqual(fs.realpathSync(W.repoRoot(sub)), fs.realpathSync(repo));
+  assert.strictEqual(real(W.repoRoot(sub)), real(repo));
 });
 
 test("create: returns null outside a repo, so the caller just shares the dir",
@@ -156,7 +167,7 @@ test("sweep: clears abandoned worktrees but spares live ones", { skip: !hasGit }
   const repo = newRepo();
   const dead = W.create(repo, "g-dead");
   const live = W.create(repo, "g-live");
-  W.sweep(new Set([live.dir]));
+  W.sweep(new Set([live.dir]), { log: null });
   assert.ok(!fs.existsSync(dead.dir), "abandoned worktree survived a sweep");
   assert.ok(fs.existsSync(live.dir), "a running ghost's worktree was swept away");
   W.remove(live, { keepBranch: false });
@@ -203,4 +214,62 @@ test("remove: leaves no empty directory behind", { skip: !hasGit }, () => {
   const wt = W.create(repo, "g-residue");
   W.remove(wt, { keepBranch: false });
   assert.ok(!fs.existsSync(wt.dir), "an empty directory was left at " + wt.dir);
+});
+
+// --- the sweep bug: a shared home, and failures that nobody ever heard -------
+
+test("worktreeHome: BAGIDEA_WORKTREE_HOME gives this process its own home",
+  { skip: !hasGit }, () => {
+    // Two runs sharing one home is the collision; the variable is the way out.
+    assert.strictEqual(real(W.worktreeHome()), real(HOME));
+    const repo = newRepo();
+    const wt = W.create(repo, "g-home");
+    assert.ok(real(wt.dir).startsWith(real(HOME)),
+      "checkout landed outside the configured home: " + wt.dir);
+    W.remove(wt, { keepBranch: false });
+  });
+
+test("sweep: a sibling's home is never touched", { skip: !hasGit }, () => {
+  // Stand in for a second process: its own home, its own live checkout.
+  const other = fs.mkdtempSync(path.join(os.tmpdir(), "bagidea-wt-home-"));
+  made.push(other);
+  const repo = newRepo();
+  const mine = W.create(repo, "g-mine");
+  process.env.BAGIDEA_WORKTREE_HOME = other;
+  const theirs = W.create(repo, "g-theirs");
+  const res = W.sweep(new Set());              // swept with THEIR home active
+  process.env.BAGIDEA_WORKTREE_HOME = HOME;
+  assert.ok(!fs.existsSync(theirs.dir), "the sweeper skipped its own home");
+  assert.ok(fs.existsSync(mine.dir), "a sibling process's live checkout was swept away");
+  assert.strictEqual(real(res.home), real(other));
+  W.remove(mine, { keepBranch: false });
+});
+
+test("sweep: reports what it removed instead of a bare count", { skip: !hasGit }, () => {
+  const repo = newRepo();
+  const dead = W.create(repo, "g-count");
+  const res = W.sweep(new Set());
+  assert.strictEqual(res.removed, 1);
+  assert.strictEqual(res.failed, 0);
+  assert.deepStrictEqual(res.errors, []);
+  assert.strictEqual(real(res.home), real(HOME));
+  assert.ok(!fs.existsSync(dead.dir));
+});
+
+test("sweep: an unreadable home is reported, not swallowed", () => {
+  // The old code answered 0 here — indistinguishable from 'nothing to do'.
+  const f = path.join(HOME, "not-a-directory");
+  fs.writeFileSync(f, "x");
+  process.env.BAGIDEA_WORKTREE_HOME = f;
+  const lines = [];
+  const res = W.sweep(new Set(), { log: (m) => lines.push(m) });
+  assert.strictEqual(res.failed, 1, "a home that cannot be read reported no failure");
+  assert.strictEqual(res.removed, 0);
+  assert.ok(lines.length === 1 && lines[0].includes("sweep could not clear"),
+    "the failure was never logged: " + JSON.stringify(lines));
+  assert.throws(() => W.sweep(new Set(), { log: null, strict: true }),
+    /sweep could not|ENOTDIR|ENOENT|EINVAL|not a directory/i,
+    "strict mode did not throw on an unreadable home");
+  process.env.BAGIDEA_WORKTREE_HOME = HOME;
+  fs.rmSync(f, { force: true });
 });

@@ -26,8 +26,7 @@ const DAEMON_DIR = path.join(__dirname, "..");   // the real daemon/ we're testi
 // secretary prompt (detected by the word "secretary") — markdown minutes plus a
 // fenced JSON actionItems array. This is what makes the test deterministic and
 // free: no model, no network.
-const CLAUDE_STUB = `#!/usr/bin/env node
-let s = ""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => {
+const CLAUDE_STUB = `let s = ""; process.stdin.on("data", c => s += c); process.stdin.on("end", () => {
   const reply = () => {
     if (/secretary/i.test(s)) {
       process.stdout.write(
@@ -77,16 +76,24 @@ async function bootIsolated(opts = {}) {
   fs.writeFileSync(path.join(ws, "memory", "nida.md"), "Nida remembers: prefer tests.");
   // The daemon reads registry.json from its OWN dir (daemon/registry.json).
   fs.writeFileSync(path.join(tmp, "daemon", "registry.json"), JSON.stringify(stubRegistry()));
-  // Fake claude on a PATH that wins.
+  // Fake claude on a PATH that wins. The daemon calls it as spawn("claude",
+  // …, { shell: true }), so the stub has to be whatever THIS shell can launch:
+  // sh finds the extension-less file and honours its shebang; cmd.exe never
+  // finds a file with no extension and resolves "claude" through PATHEXT — so
+  // Windows needs a .cmd shim that hands the same body to node. Both are
+  // written every time; each OS only ever looks at its own.
   const bin = path.join(tmp, "bin");
   fs.mkdirSync(bin, { recursive: true });
-  fs.writeFileSync(path.join(bin, "claude"), CLAUDE_STUB);
+  fs.writeFileSync(path.join(bin, "claude"), "#!/usr/bin/env node\n" + CLAUDE_STUB);
   fs.chmodSync(path.join(bin, "claude"), 0o755);
+  fs.writeFileSync(path.join(bin, "claude.js"), CLAUDE_STUB);
+  fs.writeFileSync(path.join(bin, "claude.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0claude.js" %*\r\n`);
 
   const port = 19000 + Math.floor(Math.random() * 999);
   const child = spawn(process.execPath, [path.join(tmp, "daemon", "server.js")], {
     env: { ...process.env, OEP_PORT: String(port),
-      PATH: `${bin}:${process.env.PATH}`,
+      PATH: bin + path.delimiter + process.env.PATH,
       ...(opts.slowMs ? { OFFICE_TEST_SLOW_MS: String(opts.slowMs) } : {}) },
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -107,10 +114,10 @@ async function bootIsolated(opts = {}) {
   };
 }
 
-function req(base, method, pathStr, body) {
+function req(base, method, pathStr, body, headers) {
   return new Promise((resolve, reject) => {
     const r = http.request(`${base}${pathStr}`, {
-      method, headers: body ? { "content-type": "application/json" } : {}
+      method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...(headers || {}) }
     }, (res) => {
       let d = ""; res.on("data", (c) => d += c); res.on("end", () => {
         let j = null; try { j = JSON.parse(d); } catch {}
@@ -122,6 +129,12 @@ function req(base, method, pathStr, body) {
     r.end();
   });
 }
+
+// /discuss/message and /discuss/control are owner-only: the daemon refuses them
+// with 403 unless the caller sends the x-bagidea-ui header, so an agent cannot
+// forge a CEO line or quietly end a discussion. These tests ARE the owner, so
+// they go through this helper; every other call stays header-less on purpose.
+const ui = (base, pathStr, body) => req(base, "POST", pathStr, body, { "x-bagidea-ui": "1" });
 
 // Start a 2-agent, 1-round meeting and resolve with its session key + a poller.
 async function startMeeting(base) {
@@ -188,7 +201,11 @@ test("POST /discuss/message injects a CEO line (phase:user); 404 when not live",
   const d = await bootIsolated();
   try {
     const session = await startMeeting(d.url);
-    const r = await req(d.url, "POST", "/discuss/message",
+    // An agent (no UI header) must not be able to speak as the CEO.
+    const forged = await req(d.url, "POST", "/discuss/message",
+      { session, text: "Not the owner." });
+    assert.strictEqual(forged.status, 403, "only the human UI may inject a CEO line");
+    const r = await ui(d.url, "/discuss/message",
       { session, text: "Owner weighs in." });
     assert.strictEqual(r.status, 200, "owner message to a live meeting is accepted");
     const log = await waitForMessages(d.url, session, 3);
@@ -204,14 +221,14 @@ test("live controls: pause holds, resume continues, end exits cleanly", async ()
     const session = await startMeeting(d.url);
     // Pause: the next turn must not start. We assert by sending a control and
     // checking the response echoes paused state.
-    const p = await req(d.url, "POST", "/discuss/control", { session, action: "pause" });
+    const p = await ui(d.url, "/discuss/control", { session, action: "pause" });
     assert.strictEqual(p.status, 200);
     assert.strictEqual(p.data.paused, true, "control must report paused:true");
     // Resumed.
-    const rs = await req(d.url, "POST", "/discuss/control", { session, action: "resume" });
+    const rs = await ui(d.url, "/discuss/control", { session, action: "resume" });
     assert.strictEqual(rs.data.paused, false, "control must report paused:false after resume");
     // End: the meeting must terminate (live flips to false).
-    const end = await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    const end = await ui(d.url, "/discuss/control", { session, action: "end" });
     assert.strictEqual(end.data.ended, true);
     await waitForEnd(d.url, session);
   } finally { d.stop(); }
@@ -219,16 +236,22 @@ test("live controls: pause holds, resume continues, end exits cleanly", async ()
 
 test("on end the meeting writes summary minutes + a validated .actions.json", async () => {
   const d = await bootIsolated();
+  const meetDir = path.join(d.tmp, "workspace", "meetings");
   let session;
   try {
     session = await startMeeting(d.url);
     // Let it produce opening lines, then end so the summary secretary runs.
     await waitForMessages(d.url, session, 2);
-    await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    await ui(d.url, "/discuss/control", { session, action: "end" });
     await waitForEnd(d.url, session);
+    // live=false flips before the minutes are written (the summary call runs
+    // in between), so wait on the FILES here, while the daemon is still up.
+    const mdPath = path.join(meetDir, `${session}.md`);
+    const actionsFile = path.join(meetDir, `${session}.actions.json`);
+    for (let i = 0; i < 60 && !(fs.existsSync(mdPath) && fs.existsSync(actionsFile)); i++)
+      await new Promise((r) => setTimeout(r, 250));
   } finally { d.stop(); }
   // The daemon is stopped, but the meeting artifacts live on disk under tmp.
-  const meetDir = path.join(d.tmp, "workspace", "meetings");
   const md = fs.readFileSync(path.join(meetDir, `${session}.md`), "utf8");
   assert.match(md, /## Summary/, "minutes must embed the secretary's summary");
   // Action items persist to their own store (NOT jobs.json) per ADR-0001.
@@ -249,9 +272,9 @@ test("POST /discuss/message on a finished meeting returns 404", async () => {
   try {
     const session = await startMeeting(d.url);
     await waitForMessages(d.url, session, 2);
-    await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    await ui(d.url, "/discuss/control", { session, action: "end" });
     await waitForEnd(d.url, session);
-    const r = await req(d.url, "POST", "/discuss/message", { session, text: "late" });
+    const r = await ui(d.url, "/discuss/message", { session, text: "late" });
     assert.strictEqual(r.status, 404, "message to a non-live meeting must 404");
   } finally { d.stop(); }
 });
@@ -268,7 +291,7 @@ test("End pressed mid-turn drops the lagging reply (no ghost message after close
     const session = await startMeeting(d.url);
     const mdPath = path.join(meetDir, `${session}.md`);
     await new Promise((r) => setTimeout(r, 150));
-    await req(d.url, "POST", "/discuss/control", { session, action: "end" });
+    await ui(d.url, "/discuss/control", { session, action: "end" });
     for (let i = 0; i < 60 && !fs.existsSync(mdPath); i++)
       await new Promise((r) => setTimeout(r, 250));
     assert.ok(fs.existsSync(mdPath), "minutes must be written even after a quick End");
