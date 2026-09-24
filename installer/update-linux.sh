@@ -19,10 +19,15 @@ pkill -f "godot .*--wallpaper" 2>/dev/null || true
 sleep 1
 
 # 2) Pull latest.
-#    settings.json is tracked but rewritten per-machine (hook paths); discard
-#    those local edits so --ff-only won't abort, then re-wire after the pull.
+#    NOTE: do NOT 'git checkout --' the two .claude/settings.json here. HEAD only
+#    holds an empty {"hooks":{}} placeholder, while the live files carry this
+#    machine's wiring: the installer hooks AND every hook an office plugin
+#    registered (studio-lease PreToolUse, run-clock PostToolUse). Reverting them
+#    right before wiring wiped the whole set on every update. wire-hooks.sh below
+#    MERGES its entries into whatever is already in the files, so there is nothing
+#    to discard first. If upstream ever touches them, --ff-only stops with a clear
+#    message: resolve that by hand, never by reverting the live hooks.
 echo "  [2/4] Pulling latest code..."
-git checkout -- .claude/settings.json workspace/.claude/settings.json 2>/dev/null || true
 before="$(git rev-parse HEAD)"
 git pull --ff-only || true
 after="$(git rev-parse HEAD)"

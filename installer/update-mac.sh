@@ -34,9 +34,14 @@ fi
 
 # 2) Pull the latest code.
 echo "  [2/4] Pulling latest code..."
-# Clean the hook-path files so --ff-only doesn't fail on a dirty tree
-# (wire-hooks.sh rewrites these with machine-specific absolute paths)
-git checkout -- .claude/settings.json workspace/.claude/settings.json 2>/dev/null || true
+#    NOTE: do NOT 'git checkout --' the two .claude/settings.json here. HEAD only
+#    holds an empty {"hooks":{}} placeholder, while the live files carry this
+#    machine's wiring: the installer hooks AND every hook an office plugin
+#    registered (studio-lease PreToolUse, run-clock PostToolUse). Reverting them
+#    right before wiring wiped the whole set on every update. wire-hooks.sh below
+#    MERGES its entries into whatever is already in the files, so there is nothing
+#    to discard first. If upstream ever touches them, --ff-only stops with a clear
+#    message: resolve that by hand, never by reverting the live hooks.
 BEFORE=$(git rev-parse HEAD 2>/dev/null || echo "none")
 git pull --ff-only || {
   echo "  ⚠ git pull failed — you may have local changes."
