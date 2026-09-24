@@ -27,25 +27,42 @@ function runPerm(payload, env = {}) {
   });
 }
 
-test("committed settings.json carries NO absolute path (placeholder only)", () => {
+test("no dev-machine path is ever committed in workspace/.claude/settings.json", () => {
   // Read the COMMITTED blob, not the working copy. The daemon rewrites the
   // working copy at startup on purpose (that is the second layer this file
   // tests), and node --test runs test files in parallel — so any test that
   // boots a daemon was racing this one for the same file on disk.
-  let raw;
-  try {
-    raw = execFileSync("git", ["-C", path.join(__dirname, "..", ".."),
-      "show", "HEAD:workspace/.claude/settings.json"],
-      { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
-  } catch {
-    raw = fs.readFileSync(SETTINGS, "utf8");   // no git (tarball install): best effort
+  //
+  // Since cae15ed the file is not tracked at all: it is per-machine config —
+  // absolute paths, plus whatever hooks the plugins registered for THIS install
+  // (daemon/plugin-hooks.js). It is rebuilt by the installer's wire-hooks
+  // scripts, by wire-hooks-runtime at startup and by each plugin's own hooks
+  // declaration. Both shapes satisfy the rule this test exists for — nothing in
+  // git may carry a path that means nothing on someone else's box. So: if the
+  // blob is in HEAD it must still be the placeholder, and if it is not, it must
+  // be genuinely untracked rather than merely staged for deletion.
+  const repo = path.join(__dirname, "..", "..");
+  const git = (args) => execFileSync("git", ["-C", repo].concat(args),
+    { encoding: "utf8", windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+  const REL = "workspace/.claude/settings.json";
+
+  let raw = null;
+  try { raw = git(["show", "HEAD:" + REL]); }
+  catch {
+    let indexed;
+    try { indexed = git(["ls-files", "--", REL]).trim(); }
+    catch { return; }   // no git at all (tarball install) — nothing to assert
+    assert.strictEqual(indexed, "",
+      REL + " is back in the index — it is per-machine config since cae15ed");
+    return;
   }
+
   const j = JSON.parse(raw);
   // The committed file must not bake in any dev-machine path; the daemon
   // (and installer's wire-hooks.{sh,ps1}) fill this in at runtime.
   const cmds = JSON.stringify(j.hooks || {});
   assert.doesNotMatch(cmds, /powershell|\.ps1|perm\.(ps1|js)/i,
-    `committed settings.json must not reference a hard path: ${cmds}`);
+    "committed settings.json must not reference a hard path: " + cmds);
 });
 
 test("perm.js passes safe read tools through with no opinion", async () => {
