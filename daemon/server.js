@@ -8166,6 +8166,16 @@ function gracefulShutdown(sig) {
 }
 process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
 process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+// Windows has no POSIX signals. A parent that "sends SIGTERM" there is really
+// calling TerminateProcess, which runs none of the handlers above — so every
+// claude child we spawned survives us, still talking to the proxy, and the next
+// daemon boots with an empty runChildren map and no way to find them. That is
+// exactly the orphaning issue #15 closed on Linux and left open here. An IPC
+// stop request reaches the SAME handler on every OS, so a parent that wants us
+// gone cleanly can always ask. Only wired when we were started with a channel;
+// the shell spawns us without one, so an ordinary launch is unchanged.
+if (typeof process.send === "function")
+  process.on("message", (m) => { if (m && m.type === "shutdown") gracefulShutdown("stop request"); });
 
 server.on("error", (e) => {
   // Most likely EADDRINUSE — another daemon already holds :8787. Exit cleanly
