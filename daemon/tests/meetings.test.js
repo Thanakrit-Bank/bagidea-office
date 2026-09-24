@@ -236,6 +236,7 @@ test("live controls: pause holds, resume continues, end exits cleanly", async ()
 
 test("on end the meeting writes summary minutes + a validated .actions.json", async () => {
   const d = await bootIsolated();
+  const meetDir = path.join(d.tmp, "workspace", "meetings");
   let session;
   try {
     session = await startMeeting(d.url);
@@ -243,9 +244,14 @@ test("on end the meeting writes summary minutes + a validated .actions.json", as
     await waitForMessages(d.url, session, 2);
     await ui(d.url, "/discuss/control", { session, action: "end" });
     await waitForEnd(d.url, session);
+    // live=false flips before the minutes are written (the summary call runs
+    // in between), so wait on the FILES here, while the daemon is still up.
+    const mdPath = path.join(meetDir, `${session}.md`);
+    const actionsFile = path.join(meetDir, `${session}.actions.json`);
+    for (let i = 0; i < 60 && !(fs.existsSync(mdPath) && fs.existsSync(actionsFile)); i++)
+      await new Promise((r) => setTimeout(r, 250));
   } finally { d.stop(); }
   // The daemon is stopped, but the meeting artifacts live on disk under tmp.
-  const meetDir = path.join(d.tmp, "workspace", "meetings");
   const md = fs.readFileSync(path.join(meetDir, `${session}.md`), "utf8");
   assert.match(md, /## Summary/, "minutes must embed the secretary's summary");
   // Action items persist to their own store (NOT jobs.json) per ADR-0001.
