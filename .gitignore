@@ -15,8 +15,11 @@ shell/macos/wallpaper_shim/target/
 shell/macos/*.dylib
 godot/bin-mac/
 
-# Personal Claude Code permission overrides (per-machine)
+# Per-machine Claude Code config (permissions AND hooks). The installer wires
+# these on each machine (installer/wire-hooks.ps1 / wire-hooks.sh), so tracking
+# them meant a git checkout/pull could wipe a machine's live hooks.
 .claude/settings.local.json
+.claude/settings.json
 
 # Runtime artifacts
 daemon/journal.jsonl
@@ -37,11 +40,12 @@ daemon/monitors.txt
 daemon/monitor-debug.log
 daemon/proposals.json
 
-# Adapter session workspace (keep only the permission-hook config)
+# Adapter session workspace (nothing inside is tracked; settings.json is
+# per-machine config, wired by the installer - see .claude/ above)
 workspace/*
 !workspace/.claude/
 workspace/.claude/*
-!workspace/.claude/settings.json
+workspace/.claude/settings.json
 
 # uploads/ is a runtime drop box for chat media (CEO images, screenshots, gen
 # art) — keep the dir itself tracked via a sentinel so it exists after a fresh
