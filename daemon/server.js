@@ -1092,6 +1092,25 @@ try {
   } catch {}
 })();
 
+// 🌐 i18n retry governor. Gemini's free tier allows 20 generate_content requests per
+// minute; the overlay's 1.5s janitor sweep (overlay.html:1414) re-asks for every string
+// that is still untranslated, and a string that failed never enters the cache — so one
+// exhausted quota turned into 14,770 of 17,098 daemon.log lines on 2026-09-19, ~100-240
+// failed calls a minute, which is itself 5-12x over the very limit it was hitting.
+const i18nInflight = new Set();      // strings a request is already carrying
+const i18nCooloff = new Map();       // string -> ts before which not to ask again
+const I18N_COOLOFF_MS = 10 * 60000;
+let i18nBackoffUntil = 0;            // set from the 429's own "Please retry in Ns"
+let i18nLastLog = 0, i18nSuppressed = 0;
+// One failure per sweep is one log line per 1.5s. Say it once, then once a minute with
+// a count, so a provider outage can never bury the rest of the journal again.
+function logI18nFail(msg) {
+  const now = Date.now();
+  if (now - i18nLastLog < 60000) { i18nSuppressed++; return; }
+  console.error("[i18n]", msg + (i18nSuppressed ? ` (+${i18nSuppressed} more in the last minute)` : ""));
+  i18nLastLog = now; i18nSuppressed = 0;
+}
+
 // Is a process with this image name running? Sync (~100ms) — used only on the
 // rare editor-open fallback path, to grace OLD shells whose alive-flag was
 // written once at boot and never refreshed.
@@ -7657,7 +7676,11 @@ end tell`;
         let cache = {};
         try { cache = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
         const want = [...new Set(strings.map((s) => String(s)).filter((s) => s && s.length <= 400))];
-        const missing = want.filter((s) => !(s in cache));
+        // Not cached AND not already in flight AND not cooling off after a failure —
+        // the 1.5s sweep re-sends the same strings long before the first call answers.
+        const nowMs = Date.now();
+        const missing = want.filter((s) => !(s in cache) && !i18nInflight.has(s) &&
+          !(i18nCooloff.get(s) > nowMs));
         const reply = () => {
           const out = {};
           for (const s of want) if (cache[s] !== undefined) out[s] = cache[s];
@@ -7673,6 +7696,9 @@ end tell`;
         reply();
         const gm = (reg.apiKeys || {}).GEMINI_API_KEY;
         if (!missing.length || !gm) return;
+        // Quota exhausted / provider asked us to wait: serve the cache and add nothing
+        // to the pile until the window it named has passed.
+        if (Date.now() < i18nBackoffUntil) return;
         const langName = { en: "English", zh: "Simplified Chinese", ja: "Japanese",
           ko: "Korean", es: "Spanish", fr: "French", de: "German", hi: "Hindi",
           ar: "Arabic", pt: "Portuguese", ru: "Russian", id: "Indonesian",
@@ -7685,6 +7711,7 @@ end tell`;
           try { const tmp = file + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(cache)); fs.renameSync(tmp, file); } catch {}
         } };
         for (const chunk of chunks) {
+          for (const s of chunk) i18nInflight.add(s);
           const prompt = `Translate these UI strings from Thai to ${langName}. ` +
             `Keep emoji, symbols, numbers, code and placeholders (like \${...}, <...>) EXACTLY. ` +
             `Natural, concise product-UI wording. Return ONLY a JSON object mapping each ` +
@@ -7701,19 +7728,39 @@ end tell`;
             rs.setEncoding("utf8");   // multibyte-safe (translations) across chunk boundaries
             let o = ""; rs.on("data", (c) => (o += c));
             rs.on("end", () => {
+              let failed = null;
               try {
                 const j = JSON.parse(o);
-                const txt = j.candidates && j.candidates[0] &&
-                  j.candidates[0].content.parts.map((p) => p.text || "").join("");
-                const m = JSON.parse(txt.match(/\{[\s\S]*\}/)[0]);
+                // An error reply ({"error":{"code":429,...}}) carries no `candidates` at
+                // all, so `txt` was undefined and `txt.match` threw the message that
+                // filled the journal. Report the status instead of swallowing it.
+                if (rs.statusCode !== 200 || !(j.candidates && j.candidates[0] &&
+                    j.candidates[0].content && j.candidates[0].content.parts)) {
+                  const err = (j.error && j.error.message) || "reply carried no candidates";
+                  if (rs.statusCode === 429) {
+                    const wait = /retry in ([\d.]+)s/i.exec(err);
+                    i18nBackoffUntil = Date.now() + (wait ? Math.ceil(+wait[1] * 1000) : 60000);
+                  }
+                  throw new Error(`HTTP ${rs.statusCode}: ${String(err).replace(/\s+/g, " ").slice(0, 160)}`);
+                }
+                const txt = j.candidates[0].content.parts.map((p) => p.text || "").join("");
+                const obj = txt.match(/\{[\s\S]*\}/);
+                if (!obj) throw new Error("no JSON object in the reply");
+                const m = JSON.parse(obj[0]);
                 for (const k of chunk) if (m[k] !== undefined) cache[k] = String(m[k]);
                 auxCost("gemini", chunk.join("").length * COST_RATES.gemini_i18n_per_char);
-              } catch (e) { console.error("[i18n]", e.message); }
+              } catch (e) { failed = e.message; }
+              for (const s of chunk) {
+                i18nInflight.delete(s);
+                if (failed && cache[s] === undefined) i18nCooloff.set(s, Date.now() + I18N_COOLOFF_MS);
+              }
+              if (failed) logI18nFail(failed);
               finish();
             });
           });
-          rq.setTimeout(40000, () => { rq.destroy(); finish(); });
-          rq.on("error", () => finish());
+          const release = () => { for (const s of chunk) i18nInflight.delete(s); };
+          rq.setTimeout(40000, () => { rq.destroy(); release(); finish(); });
+          rq.on("error", (e) => { release(); logI18nFail("request: " + e.message); finish(); });
           rq.write(reqBody); rq.end();
         }
       } catch (e) { res.writeHead(400); res.end(String(e.message)); }
