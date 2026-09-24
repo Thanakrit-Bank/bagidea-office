@@ -75,6 +75,11 @@ const STOP = { stop: "end_turn", length: "max_tokens", tool_calls: "tool_use", c
 // hatch. Only used when talking to Gemini — other providers reject unknown
 // message fields.
 const SIG_DUMMY = "skip_thought_signature_validator";
+// Gemini refuses a request whose last turn is a model turn; when a non-empty
+// assistant prefill has to be preserved we keep it and follow it with this.
+const GEMINI_CONTINUE =
+  "Continue the previous assistant message from exactly where it stops. " +
+  "Output only the continuation — do not repeat it and do not add a preamble.";
 const SIG_MAX = 4000;                 // ids are ~short; this is a few hundred KB worst-case
 const SIG_CACHE = new Map();          // tool_call id → thought_signature (insertion-ordered)
 function sigRemember(id, sig, cache) {
@@ -178,6 +183,22 @@ function toOpenAI(a, model, opts) {
   // System context that arrived after the last user turn (typically right after a
   // tool result) has no user message to ride on → becomes the final user turn.
   if (pending.length) msgs.push({ role: "user", content: pending.join("\n\n") });
+  // Gemini rejects any request whose last turn is a model turn ("Requests
+  // ending with a model turn are not supported"), but Claude Code routinely
+  // ends its history with an assistant prefill. An empty prefill carries no
+  // meaning → drop it. A prefill with real text (or a dangling tool_call) does
+  // → keep it and append a short user turn telling the model to continue it, so
+  // the prefill still steers the answer instead of being silently discarded.
+  // Gemini-only: every other provider accepts a trailing assistant turn.
+  // Runs after the pending flush (so it judges the real final turn) and before
+  // the system message is unshifted (which only ever touches the front).
+  if (opts && opts.gemini) {
+    const bare = (m) => m.role === "assistant" && !m.content && !m.tool_calls;
+    while (msgs.length && bare(msgs[msgs.length - 1])) msgs.pop();
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role === "system" || last.role === "assistant")
+      msgs.push({ role: "user", content: GEMINI_CONTINUE });
+  }
   if (sysParts.length) msgs.unshift({ role: "system", content: sysParts.join("\n\n") });
   const out = { model, messages: msgs, stream: !!a.stream };
   if (a.max_tokens) out.max_tokens = a.max_tokens;

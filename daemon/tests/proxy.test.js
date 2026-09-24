@@ -302,3 +302,51 @@ test("non-gemini providers get NO extra_content on tool_calls (strict APIs rejec
   ] }, "gpt-4o", { sigs });   // no opts.gemini
   assert.strictEqual(o.messages[0].tool_calls[0].extra_content, undefined);
 });
+
+test("gemini: trailing EMPTY assistant prefill is dropped (gemini rejects a final model turn)", () => {
+  const out = toOpenAI({ system: "sys", messages: [
+    { role: "user", content: "hi" },
+    { role: "assistant", content: [{ type: "text", text: "" }] },
+  ] }, "gemini-3.7-flash", { gemini: true });
+  assert.deepStrictEqual(out.messages.map((m) => m.role), ["system", "user"]);
+});
+
+test("gemini: trailing NON-EMPTY assistant prefill is kept, followed by a user continuation turn", () => {
+  const out = toOpenAI({ messages: [
+    { role: "user", content: "capital?" },
+    { role: "assistant", content: [{ type: "text", text: "The capital is" }] },
+  ] }, "gemini-3.7-flash", { gemini: true });
+  assert.deepStrictEqual(out.messages.map((m) => m.role), ["user", "assistant", "user"]);
+  assert.strictEqual(out.messages[1].content, "The capital is", "prefill text must survive");
+  assert.match(out.messages[2].content, /[Cc]ontinue/);
+});
+
+test("gemini: trailing assistant tool_call is kept (never dropped) and followed by a user turn", () => {
+  const out = toOpenAI({ messages: [
+    { role: "user", content: "go" },
+    { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "f", input: {} }] },
+  ] }, "gemini-3.7-flash", { gemini: true, sigs: new Map() });
+  const roles = out.messages.map((m) => m.role);
+  assert.deepStrictEqual(roles, ["user", "assistant", "user"]);
+  assert.strictEqual(out.messages[1].tool_calls.length, 1);
+});
+
+test("non-gemini providers keep a trailing assistant prefill exactly as-is", () => {
+  for (const opts of [undefined, {}, { gemini: false }]) {
+    const out = toOpenAI({ system: "sys", messages: [
+      { role: "user", content: "capital?" },
+      { role: "assistant", content: [{ type: "text", text: "The capital is" }] },
+    ] }, "gpt-4o", opts);
+    assert.deepStrictEqual(out.messages.map((m) => m.role), ["system", "user", "assistant"],
+      "trailing assistant must survive for claude/openai/groq/openrouter");
+    assert.strictEqual(out.messages[2].content, "The capital is");
+  }
+});
+
+test("non-gemini providers keep even an EMPTY trailing assistant prefill", () => {
+  const out = toOpenAI({ messages: [
+    { role: "user", content: "hi" },
+    { role: "assistant", content: [{ type: "text", text: "" }] },
+  ] }, "gpt-4o");
+  assert.deepStrictEqual(out.messages.map((m) => m.role), ["user", "assistant"]);
+});
