@@ -2358,7 +2358,11 @@ function runClaude(agent, prompt, opts = {}) {
   if (route.modelArgs.length) args.push(...route.modelArgs);
   const child = spawnAgent(agent, args, {
     cwd,
-    env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: agent, OFFICE_TASK: task },
+    env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: agent, OFFICE_TASK: task,
+      // M3-session: the office session key — the SAME value this run's task.started/
+      // task.completed carry as `session` (line 2283). Until now it lived only on the
+      // event, so a process could never tell the lease registry which session it is.
+      OFFICE_SESSION: (entry && entry.key) || "" },
   });
   // Track the run per project so the owner can stop it and take the project over.
   if (projId) {
@@ -3387,7 +3391,10 @@ function runSub(parentId, subId, taskText, entry, onDone) {
   // A ghost runs where its parent runs — same backend, same box.
   const child = spawnAgent(parentId, args, {
     cwd: subCwd,
-    env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: subId, OFFICE_TASK: entry.key },
+    env: { ...process.env, ...(reg.apiKeys || {}), ...route.env, OFFICE_ADAPTER: "1", OFFICE_AGENT: subId, OFFICE_TASK: entry.key,
+      // M3-session: same key the ghost's task.started/task.completed carry as `session`
+      // (lines 3318/3324). A ghost has no separate turn id, so TASK and SESSION agree.
+      OFFICE_SESSION: (entry && entry.key) || "" },
   });
   child.stdin.write(
     `You are a temporary SUB-AGENT — a parallel clone of "${a.name}" (${a.role}) ` +
@@ -4585,7 +4592,10 @@ async function runDiscussion(ids, topic, rounds, social, preKey) {
             `(WebSearch / WebFetch / Read) — เฉพาะตอนที่จำเป็นจริงๆ เท่านั้น ไม่ต้องค้นพร่ำเพรื่อ ` +
             `และตอบกลับเป็นข้อความสนทนาตามปกติ.` +
             (social ? SOCIAL_PROPOSAL_INSTRUCTION : ""),
-            { tools: social ? "" : "WebSearch,WebFetch,Read,Glob,Grep", provider: a && a.provider, model: a && a.model, env: { OFFICE_AGENT: id, OFFICE_TASK: task },
+            { tools: social ? "" : "WebSearch,WebFetch,Read,Glob,Grep", provider: a && a.provider, model: a && a.model, env: { OFFICE_AGENT: id, OFFICE_TASK: task,
+                // M3-session: the meeting's own session key (same value as the
+                // meeting.* broadcasts use, e.g. line 4581).
+                OFFICE_SESSION: (entry && entry.key) || "" },
               // Show each participant's turn as a live task row (meeting/break-room).
               track: { agent: id, title: (social ? "☕ พักเบรก: " : "🗣 ประชุม: ") + String(topic || "").slice(0, 60) } });
           let line = text.split("\n").filter(Boolean).join(" ").slice(0, 500);
